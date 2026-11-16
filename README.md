@@ -6,6 +6,7 @@ migration**, with traceable CSV and standalone SQL exports.
 An open-source project by [Axis Lab](https://github.com/NextSpace2025), supporting
 the path from construction documents to reliable operational data and match_flow.
 
+[One-command install](#install) ·
 [Try the examples](#try-it) ·
 [Request an initial data assessment](https://github.com/NextSpace2025/axis_migration/issues/new?title=Initial%20data%20assessment) ·
 [About match_flow](#match_flow)
@@ -45,7 +46,8 @@ flowchart LR
 These are instructions and examples for a capable agent, not a hosted OCR
 service or a universal document parser. The host needs suitable local file,
 spreadsheet, PDF, or image-reading capabilities for the supplied source format.
-No API key, external service, or environment variable is required by the package.
+The skill workflows need no package-specific API key, hosted data-processing
+service, or environment variable.
 Missing capabilities must be reported instead of simulated.
 
 The first worked domain is procurement. Contracts, progress claims, labour,
@@ -54,25 +56,76 @@ schema discovery. The purchase-order example is not a universal ERP schema.
 
 ## Install
 
-Copy each **complete skill directory**, including its references and assets,
-and retain its bundled `LICENSE`, into the skill location used by your agent.
-Both are useful together; schema
-design can run alone, and migration can use a user-supplied contract when the
-schema-design skill is not installed.
+Requires **Node.js 22.20+**, npm/npx, Git, and access to npm and GitHub.
+Installation uses the [Vercel Labs skills CLI](https://github.com/vercel-labs/skills)
+at the tested version **1.9.0**. Run these commands in your terminal.
 
-| Agent | Project-local parent directory | Reference |
-|---|---|---|
-| Codex | `.agents/skills/` | [Official OpenAI skills documentation](https://learn.chatgpt.com/docs/build-skills) |
-| Claude Code | `.claude/skills/` | [Official skills documentation](https://code.claude.com/docs/en/skills) |
-| Antigravity | `.agents/skills/` | [Official skills documentation](https://antigravity.google/docs/skills) |
+Install both skills for **Codex, Claude Code, and Antigravity together**:
 
-For example, the installed file is
-`.agents/skills/construction-schema-design/SKILL.md` for a project using the
-first layout. In Codex, invoke `$construction-schema-design` or
-`$construction-data-migration`; elsewhere, name the skill in your request or
-use the host's skill menu. Host discovery policies may differ. Installation and
-end-to-end runs in these three hosts have not been tested by this repository's
-local test suite.
+```sh
+npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a codex claude-code antigravity -s "*" --copy -y
+```
+
+Or install for one agent:
+
+**Codex**
+
+```sh
+npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a codex -s "*" --copy -y
+```
+
+**Claude Code**
+
+```sh
+npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a claude-code -s "*" --copy -y
+```
+
+**Antigravity**
+
+```sh
+npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a antigravity -s "*" --copy -y
+```
+
+`-g` makes the skills available across projects. `-s "*"` installs both skills
+from this repository, and `--copy` includes their references, examples,
+metadata, and licenses without relying on symlinks. `-y` skips installer prompts.
+Rerunning the command refreshes same-named skills; **back up local edits before
+reinstalling**, including a same-named skill installed from another source.
+
+Default discovery locations:
+
+| Agent | Global parent directory | Project-local parent directory | Reference |
+|---|---|---|---|
+| Codex | `~/.agents/skills/` | `.agents/skills/` | [Official OpenAI documentation](https://learn.chatgpt.com/docs/build-skills) |
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` | [Official documentation](https://code.claude.com/docs/en/skills) |
+| Antigravity | `~/.gemini/config/skills/` | `.agents/skills/` | [Official documentation](https://antigravity.google/docs/skills) |
+
+For a **project-local install**, run the same command from the project root
+with `-g` omitted. For a preview without installation:
+
+```sh
+npx --yes skills@1.9.0 add NextSpace2025/axis_migration --list
+```
+
+Verify the global installation:
+
+```sh
+npx --yes skills@1.9.0 list -g -a codex claude-code antigravity
+```
+
+Start a new agent session if the skills do not appear. In Codex, invoke
+`$construction-schema-design` or `$construction-data-migration`; in Claude
+Code, use `/construction-schema-design` or `/construction-data-migration`.
+Antigravity App/CLI also exposes skill-name slash commands; its IDE provides
+skill discovery through Customizations. You can also name either skill in a
+normal request.
+
+For manual installation, copy each complete skill directory to the applicable
+location above, retaining its `LICENSE`. Both skills work together; schema
+design can run alone, and migration can use a supplied contract independently.
+See the [CLI reference](https://github.com/vercel-labs/skills/blob/main/docs/commands.md)
+for installation options. Agent runtime/OCR behavior still depends on the host
+and is separate from checking that the skill files were installed correctly.
 
 ## Try it
 
