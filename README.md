@@ -1,7 +1,15 @@
 # axis_migration
 
-Construction-focused AI skills for **schema design** and **document-to-database
-migration**, with traceable CSV and standalone SQL exports.
+An agent-guided migration tool that turns a folder of construction documents
+into purpose-specific, traceable data.
+
+**Inspect the folder → establish the purpose → decide headers → accumulate and
+validate records → migrate/export.**
+
+The goal is to help users build a usable dataset over time, rather than impose
+a fixed company classification. PDF, XLSX/XLS and PNG/JPEG are interpreted using
+the host agent's available document tools. The visible result is a simple local,
+spreadsheet-like table.
 
 An open-source project by [Axis Lab](https://github.com/NextSpace2025), supporting
 the path from construction documents to reliable operational data and match_flow.
@@ -22,14 +30,14 @@ Company classifications and ledger formats are optional local mappings.
 
 ```mermaid
 flowchart LR
-    A[Documents and spreadsheets] --> B[Schema design]
-    C[Optional company mapping] -.-> B
-    B --> D[Sample rows and design review]
-    D --> E[Extract and transform]
-    E --> F[Validate and trace]
-    F --> G[CSV / standalone SQL]
-    G --> H[Your spreadsheet or database]
-    G --> I[Future match_flow integration]
+    A[Inspect folder and document layouts] --> B[Establish intended use]
+    B --> C[Decide headers and row meaning]
+    C --> D[Map and compare real samples]
+    D --> E[Accumulate and validate records]
+    E --> F[Local table / SQLite / CSV / SQL]
+    G[New or revised documents] --> A
+    E --> H[Review gaps and contract changes]
+    H --> C
 ```
 
 ## What is included
@@ -53,6 +61,67 @@ Missing capabilities must be reported instead of simulated.
 The first worked domain is procurement. Contracts, progress claims, labour,
 equipment, ledgers, and inspections can reuse the process after their own
 schema discovery. The purchase-order example is not a universal ERP schema.
+
+## Current scope and next milestone
+
+| Capability | Status |
+|---|---|
+| Folder discovery, purpose-specific headers, source mappings | English agent skill workflow |
+| Document interpretation and row rearrangement | Performed by the host agent with available tools; layout-dependent |
+| SQLite table viewing and CSV/SQL downloads | Included local Python tool |
+| Versioned package update, backup and rollback | Included explicit update tool |
+| Duplicate-safe incremental ingestion and schema evolution | Skill guidance; reusable engine and end-to-end acceptance tests still planned |
+| Upload UI, charts, ERP and PO/statement matching | Outside this release |
+
+The next milestone is a repeatable accumulation workflow: the same source can be
+rerun without duplicate rows; revised documents are distinguished from new ones;
+header changes preserve earlier data; each value retains its source location.
+Raw OCR text or JSON alone is not a successful migration. Unreadable or
+unverified data must remain visibly separate from validated business records.
+
+## Local workspace and result viewer
+
+The skill installer below installs the two skill directories. To also use the
+viewer, package updater and output instructions, clone this repository:
+
+```sh
+git clone https://github.com/NextSpace2025/axis_migration.git
+cd axis_migration
+```
+
+Ask the agent to read `AGENTS.md` and `output/agents.md`, inspect your selected
+folder, establish its purpose, propose headers with real sample rows, then
+populate a fresh local database. Output goes to the source folder's parent:
+`INPUT.parent/output/INPUT.name/RUN_ID/`. Company configuration and data stay
+outside this public repository.
+
+```sh
+python3 scripts/view_db.py /absolute/path/to/data.sqlite
+```
+
+Open the printed loopback URL and select the business table. The viewer is
+read-only, requires Python 3.10+, and has no hosted API, CDN or telemetry.
+Document interpretation still depends on the host agent; using a cloud model
+does not mean inference happens offline. This is a result viewer, not a browser
+upload or independent OCR application.
+
+## Package updates
+
+Stop active migration jobs and the viewer before updating a cloned installation:
+
+```sh
+python3 scripts/update.py check
+python3 scripts/update.py update
+python3 scripts/update.py rollback --backup /path/to/axis_migration.backup-TIMESTAMP
+```
+
+Updates select stable `vMAJOR.MINOR.PATCH` Git tags, validate layout and VERSION,
+back up the installation beside it, and preserve local `config/` and `output/`
+data. External result directories and database schemas are not migrated.
+`output/agents.md` follows the selected release. Other local edits remain in the
+backup but are not merged. Restart the viewer and agent after updating.
+Copied global skills are separate: refresh them using the installation command.
+Use a trusted publisher; updates download executable code. Keep backups private.
 
 ## Install
 

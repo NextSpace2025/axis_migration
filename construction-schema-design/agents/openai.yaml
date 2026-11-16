@@ -1,4 +1,4 @@
 interface:
   display_name: "Construction Schema Design"
   short_description: "Design traceable construction data schemas"
-  default_prompt: "Use $construction-schema-design to propose a schema, source mapping, and sample rows for these construction documents."
+  default_prompt: "Use $construction-schema-design to read these PDF, spreadsheet, or image documents and propose headers and actual sample rows for my intended result."

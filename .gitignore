@@ -7,3 +7,10 @@ __pycache__/
 ._*
 .env
 .env.*
+
+/config/
+/output/*
+!/output/agents.md
+*.sqlite
+*.sqlite-*
+*.db

@@ -2,8 +2,11 @@
   "files": [
     ".gitattributes",
     ".gitignore",
+    "AGENTS.md",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
+    "VERSION",
     "construction-data-migration/LICENSE",
     "construction-data-migration/SKILL.md",
     "construction-data-migration/agents/openai.yaml",
@@ -22,9 +25,16 @@
     "construction-schema-design/agents/openai.yaml",
     "construction-schema-design/references/construction-semantics.md",
     "construction-schema-design/references/design-contract.md",
+    "construction-schema-design/references/intent-to-table.md",
+    "output/agents.md",
     "public-files.json",
     "scripts/package_public.py",
+    "scripts/update.py",
+    "scripts/view_db.py",
     "tests/test_public_release.py",
-    "tests/test_synthetic_export.py"
+    "tests/test_synthetic_export.py",
+    "tests/test_update.py",
+    "tests/test_viewer.py",
+    "update-config.json"
   ]
 }
