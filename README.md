@@ -42,7 +42,7 @@ flowchart LR
 
 ## What is included
 
-- English instructions using the [Agent Skills format](https://agentskills.io/specification).
+- Instructions using the [Agent Skills format](https://agentskills.io/specification).
 - Construction-specific quantity interpretation, row roles, source provenance,
   continuation-page evidence, and handling of unknown values.
 - A [starter data model](construction-schema-design/references/design-contract.md)
@@ -66,7 +66,7 @@ schema discovery. The purchase-order example is not a universal ERP schema.
 
 | Capability | Status |
 |---|---|
-| Folder discovery, purpose-specific headers, source mappings | English agent skill workflow |
+| Folder discovery, purpose-specific headers, source mappings | Agent skill workflow |
 | Document interpretation and row rearrangement | Performed by the host agent with available tools; layout-dependent |
 | SQLite table viewing and CSV/SQL downloads | Included local Python tool |
 | Versioned package update, backup and rollback | Included explicit update tool |
