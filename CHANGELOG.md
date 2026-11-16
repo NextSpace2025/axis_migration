@@ -7,7 +7,7 @@
 - Require mapped business columns as the final result; raw evidence is intermediate.
 - Open and verify the primary business table rather than the raw extraction table.
 
-- Two English construction schema and migration skills.
+- Two construction schema and migration skills.
 - Read-only local SQLite table viewer with CSV and SQL exports.
 - Explicit stable-tag updates, installation backup, and rollback.
 - Preserve local configuration and generated outputs during version changes.
