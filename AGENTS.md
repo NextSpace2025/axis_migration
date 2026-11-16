@@ -1,7 +1,7 @@
 # Axis Migration
 
 Read `output/agents.md` before processing an input folder. Inspect its structure
-before designing tables or converting records. Use the two English skills in
+before designing tables or converting records. Use the two skills in
 this package: `construction-schema-design`, then `construction-data-migration`.
 
 The user's explicit input directory determines the output location. Never use
