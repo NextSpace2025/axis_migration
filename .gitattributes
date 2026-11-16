@@ -1,0 +1,4 @@
+/_private export-ignore
+/dist export-ignore
+/local-output export-ignore
+._* export-ignore

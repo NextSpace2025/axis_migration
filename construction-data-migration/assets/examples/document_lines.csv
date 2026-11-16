@@ -1,0 +1,5 @@
+﻿line_id,document_id,line_number,row_type,item_name,specification,work_area,billed_quantity,billed_unit,unit_price,amount,source_category,company_category,raw_record
+L-PO-1,D-PO-1,1,detail,AL sheet,2T,\N,2,SHEET,300,600,\N,\N,"{""품명"":""AL sheet"",""규격"":""2T"",""청구수량"":""2"",""청구단위"":""SHEET"",""단가"":""300"",""금액"":""600""}"
+L-PO-2,D-PO-1,2,detail,AL sheet,2T,\N,2,SHEET,300,600,\N,\N,"{""품명"":""AL sheet"",""규격"":""2T"",""청구수량"":""2"",""청구단위"":""SHEET"",""단가"":""300"",""금액"":""600""}"
+L-ST-1,D-ST-1,1,detail,Panel processing,O'Brien finish,4.5,6,EA,100,600,\N,\N,"{""품명"":""Panel processing"",""규격"":""O'Brien finish"",""면적(㎡)"":""4.5"",""청구수량"":""6"",""청구단위"":""EA"",""단가"":""100"",""금액"":""600""}"
+L-ST-2,D-ST-1,2,charge,Delivery charge,\N,\N,\N,\N,\N,50,\N,\N,"{""품명"":""Delivery charge"",""규격"":"""",""면적(㎡)"":"""",""청구수량"":"""",""청구단위"":"""",""단가"":"""",""금액"":""50""}"

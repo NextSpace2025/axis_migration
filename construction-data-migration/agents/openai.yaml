@@ -1,0 +1,4 @@
+interface:
+  display_name: "Construction Data Migration"
+  short_description: "Export construction records to CSV and SQL"
+  default_prompt: "Use $construction-data-migration to export these construction records as validated CSV or standalone SQL files."

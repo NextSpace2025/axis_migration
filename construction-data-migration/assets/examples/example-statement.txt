@@ -1,0 +1,21 @@
+SYNTHETIC EXAMPLE — no real company or transaction data
+Document type: Transaction statement (거래명세표)
+Document number: EX-ST-001
+Date: 2030-04-15
+Supplier: Example Metal Works
+Buyer: Example Contractor
+Project: Example Site A
+Currency: KRW (printed on this fictional document)
+
+Line | 품명 | 규격 | 면적(㎡) | 청구수량 | 청구단위 | 단가 | 금액
+1 | Panel processing | O'Brien finish | 4.5 | 6 | EA | 100 | 600
+2 | Delivery charge | | | | | | 50
+
+Supply amount: 650
+Tax amount: 65
+Total amount: 715
+
+The first row has 4.5 m² of reported work area and is billed for 6 EA.
+The second row has no quantity or price; its amount is not checkable by multiplication.
+No company classification has been provided.
+No relationship to any other example document is asserted.

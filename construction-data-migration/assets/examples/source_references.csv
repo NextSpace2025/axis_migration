@@ -1,0 +1,7 @@
+﻿reference_id,document_id,line_id,source_file,source_location,connection_evidence
+R-PO-1,D-PO-1,L-PO-1,example-order.txt,Table row 1,\N
+R-PO-2,D-PO-1,L-PO-2,example-order.txt,Table row 2,\N
+R-PO-H,D-PO-1,\N,example-order.txt,Document header and totals,\N
+R-ST-1,D-ST-1,L-ST-1,example-statement.txt,Table row 1,\N
+R-ST-2,D-ST-1,L-ST-2,example-statement.txt,Table row 2,\N
+R-ST-H,D-ST-1,\N,example-statement.txt,Document header and totals,\N

@@ -1,0 +1,2 @@
+﻿issue_id,document_id,line_id,code,cause,resolution
+I-ST-2,D-ST-1,L-ST-2,amount_not_checkable,The source charge has an amount but no quantity or unit price.,Retain the source amount; obtain a pricing basis if multiplication must be checked.

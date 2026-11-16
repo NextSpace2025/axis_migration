@@ -1,0 +1,3 @@
+﻿document_id,document_type,document_number,document_date,supplier_name,buyer_name,project_name,currency,supply_amount,tax_amount,total_amount
+D-PO-1,purchase_order,EX-PO-001,2030-04-14,Example Metal Works,Example Contractor,Example Site A,KRW,1200,120,1320
+D-ST-1,transaction_statement,EX-ST-001,2030-04-15,Example Metal Works,Example Contractor,Example Site A,KRW,650,65,715

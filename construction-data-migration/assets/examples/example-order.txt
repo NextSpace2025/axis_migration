@@ -1,0 +1,19 @@
+SYNTHETIC EXAMPLE — no real company or transaction data
+Document type: Purchase order
+Document number: EX-PO-001
+Date: 2030-04-14
+Supplier: Example Metal Works
+Buyer: Example Contractor
+Project: Example Site A
+Currency: KRW (printed on this fictional document)
+
+Line | 품명 | 규격 | 청구수량 | 청구단위 | 단가 | 금액
+1 | AL sheet | 2T | 2 | SHEET | 300 | 600
+2 | AL sheet | 2T | 2 | SHEET | 300 | 600
+
+Supply amount: 1200
+Tax amount: 120
+Total amount: 1320
+
+Both numbered rows are real occurrences within this fictional order.
+No relationship to any other example document is asserted.
