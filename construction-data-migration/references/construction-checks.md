@@ -34,6 +34,7 @@ issues even if a previously missing page explains the total difference.
 
 ## Boundaries
 
-Do not match an order to a statement, infer progress/payment status, enforce
-process-yield limits, or compare prices across companies as part of this export.
-Those need explicit business rules and a separate requested workflow.
+Do not match an order to a statement as part of this export; that belongs to
+`construction-document-matching` when requested. Inferring progress/payment
+status, enforcing process-yield limits, or comparing prices across companies
+need explicit business rules and a separate requested workflow.

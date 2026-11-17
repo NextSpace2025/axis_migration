@@ -18,7 +18,7 @@ class SyntheticExportTests(unittest.TestCase):
         """Method: execute the standalone SQL in a fresh in-memory database."""
         self.connection = sqlite3.connect(":memory:")
         self.connection.row_factory = sqlite3.Row
-        self.connection.executescript((EXAMPLES / "example.sqlite.sql").read_text())
+        self.connection.executescript((EXAMPLES / "example.sqlite.sql").read_text(encoding="utf-8"))
 
     def tearDown(self):
         """Method: dispose of all scratch data after each test."""
@@ -28,7 +28,7 @@ class SyntheticExportTests(unittest.TestCase):
         """Method: compare raw source rows and declared totals with the export."""
         for file, document_id in (("example-order.txt", "D-PO-1"),
                                   ("example-statement.txt", "D-ST-1")):
-            source = (EXAMPLES / file).read_text()
+            source = (EXAMPLES / file).read_text(encoding="utf-8")
             lines = self.connection.execute(
                 "SELECT * FROM document_lines WHERE document_id=? ORDER BY line_number",
                 (document_id,)).fetchall()
@@ -103,7 +103,7 @@ class SyntheticExportTests(unittest.TestCase):
     def test_sql_rerun_fails_without_erasing_data(self):
         """Method: an existing database is not silently overwritten or merged."""
         with self.assertRaises(sqlite3.OperationalError):
-            self.connection.executescript((EXAMPLES / "example.sqlite.sql").read_text())
+            self.connection.executescript((EXAMPLES / "example.sqlite.sql").read_text(encoding="utf-8"))
         self.connection.rollback()
         self.assertEqual(self.connection.execute("SELECT count(*) FROM document_lines").fetchone()[0], 4)
 

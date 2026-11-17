@@ -19,7 +19,7 @@ SPEC.loader.exec_module(PACKAGE)
 class PublicReleaseTests(unittest.TestCase):
     """Class: ensure only explicitly selected public files enter an archive."""
 
-    def test_archive_contains_exact_manifest_and_two_skills(self):
+    def test_archive_contains_exact_manifest_and_three_skills(self):
         """Method: package actual public files and verify release boundaries."""
         payloads = PACKAGE.public_payloads(ROOT)
         with tempfile.TemporaryDirectory() as directory:
@@ -31,7 +31,8 @@ class PublicReleaseTests(unittest.TestCase):
                 entries = {name for name in archive.namelist() if name.endswith("/SKILL.md")}
                 self.assertEqual(entries, {
                     "construction-schema-design/SKILL.md",
-                    "construction-data-migration/SKILL.md"})
+                    "construction-data-migration/SKILL.md",
+                    "construction-document-matching/SKILL.md"})
                 self.assertFalse(any("_private" in name or "_backups" in name
                                      for name in archive.namelist()))
                 for name, expected in payloads.items():

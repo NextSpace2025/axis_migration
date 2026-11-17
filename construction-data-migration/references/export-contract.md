@@ -2,15 +2,43 @@
 
 ## Inputs and handoff
 
-Require source scope, a schema version, table/row definitions, field dictionary,
-PK/FK constraints, source-to-target mappings, null handling, validation rules,
-and an SQL dialect when SQL is requested. Reuse supplied contracts and explicit
-user choices. Ask only about missing decisions that change meaning or would
-lose data. Ordinary formatting choices do not need another approval step.
+Require requested source scope, a defined model/version and decision basis,
+table/row definitions, field dictionary, PK/FK, source mappings, null handling,
+validation rules, and an SQL dialect when requested. Reuse supplied contracts
+and explicit user choices, checking their fit against the current contents.
+Ask only about missing decisions that change meaning or lose data.
+
+The handoff must account for every requested file and page/sheet, with region/
+field mappings or located gaps. Carry `typed_mapped` (structured destination),
+`raw_only` (evidence without a business destination), `unresolved` (unread or
+uncertain content/mapping) and `excluded` (reasoned scope/non-business exclusion).
+If the design skill is unavailable, perform this review before conversion using
+the supplied target and actual sources. Include uninspected content; a sample
+is not full coverage. Raw-only and excluded content never count as mapped.
+Resolve structural ambiguity before converting that scope; representable source
+uncertainty may remain null plus issues. Report partial results without silently
+narrowing the request. Model definition does not authorize unrequested exports.
 
 Record any optional company mapping/version. A missing company master or
 classification map does not prevent raw extraction. Preserve source names and
 categories; company-normalized fields may stay null.
+
+Classification outputs use the leading contract order `company_name`,
+`major_category` (construction trade), `middle_category` (activity),
+`minor_category` (specific operation), `classification_basis`, `source_reference`.
+Company is the counterparty, excluding the reference buyer. Verify the defined
+classification mapping/version, hierarchy and source evidence. Keep proposed or
+unresolved classifications separate from confirmed company values; do not
+silently promote a starter suggestion. Other business tables retain their own
+contract column order.
+
+Keep trade classification at three levels and preserve the defined shared
+metadata and document-type-specific detail schemas. Verify that each subdivided
+source attribute has a mapping to located wording/layout/units, with the original
+text retained. Missing source evidence cannot be replaced with assumptions from
+paths, company names or industry defaults. Label derived fields separately with
+their rules/input references; report new meanings for model review rather than
+adding columns or flattening incompatible document types during export.
 
 ## CSV
 
@@ -53,6 +81,21 @@ categories; company-normalized fields may stay null.
 
 ## Validation and exception handling
 
+Keep these findings distinguishable, recording affected locations and checks
+actually performed. Use `not_checked` or `not_checkable` with reasons rather
+than treating missing evidence as a pass:
+
+| Check | What establishes it |
+|---|---|
+| Source-reading accuracy | Compare extracted values and row boundaries with actual cells/pages/images; record OCR, visual-reading and formula-cache limits |
+| Semantic mapping | Verify field meanings, quantity/unit/pricing roles, group inheritance, document relationships and coverage against the defined model |
+| Source-internal consistency | Preserve conflicting labels, formulas, amounts or summaries independently; copying a conflict accurately does not resolve it |
+| Arithmetic | Recalculate only from evidenced bases, units and rounding; retain source amount, calculated amount and source-minus-calculated difference |
+| Database integrity | Check types, nulls, keys, ownership and read-back in the requested isolated local target |
+
+Agreement of totals does not prove OCR or mapping accuracy. A copied source
+error remains a source finding, not an excuse to overwrite the source value.
+
 1. Account for every requested source, page/sheet, and row: exported, non-detail,
    duplicate-copy occurrence, unreadable, or excluded with a located reason.
 2. Validate field types, actual calendar dates, decimal precision, unit meaning,
@@ -73,11 +116,13 @@ categories; company-normalized fields may stay null.
 
 ## Report and run log
 
-Deliver the requested CSV/SQL, the contract/mapping used or its identifier,
-and a validation report. Include source coverage, table counts, source versus
-export totals, checkable/not-checkable counts, unresolved findings, exclusions,
-and execution checks actually run. A zero-row input still gets a valid header
-or empty table definition plus a clear coverage report.
+Deliver requested outputs, model/version and decision basis, the mappings and
+coverage review used, and a validation report. Include requested versus processed
+scope, coverage statuses, table counts, source versus export totals, results for
+each check category, checkable/not-checkable counts, unresolved findings and
+exclusions. Keep model coverage, conversion and validation completion separate.
+A zero-row input still gets a valid header or empty table definition plus an
+honest coverage report.
 
 Write a small JSONL run log alongside generated exports when file output is
 requested. Each event includes `timestamp` (UTC ISO), `action`, `input`

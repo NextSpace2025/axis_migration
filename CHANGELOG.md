@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- Add a read-only dashboard with grouped Korean table names, row counts,
+  explanation search, table grain/interpretation/cautions, and related links.
+- Add per-table Korean column labels, field meanings, unit evidence and
+  uncertainty guides, retaining original database and CSV/SQL field names.
+- Load company table/column descriptions from an external `--catalog` JSON file;
+  document the workflow and verification in `docs/2026-11-17.md`.
+- Start/resume a private `.axis_migration/record.md` in the selected input folder,
+  preserving append-only progress, user decisions and result locations across skills.
+- Add counterparty-first trade/activity/operation classification proposals,
+  a configurable starter table, and source-text mapping before classification.
+- Add `construction-document-matching`: supply-chain role mapping, evidence-ranked
+  order/statement links, quantity and amount reconciliation with rounding
+  detection, party identity review and open (unbilled) items.
+- Add `scripts/reconcile.py`: exact-decimal line, total, tax and written-amount
+  checks, truncation-pattern detection, cumulative checks and open items.
+- Align both skills and package guidance around document-based model proposals,
+  full requested-scope coverage review, then defined-model conversion.
+- Require located model evidence, coverage statuses, model version/decision
+  basis and evidence-backed target field/function comparisons.
+- Separate source reading, semantic mapping, source conflicts, arithmetic and
+  database findings while preserving original-source and quantity rules.
+
 ## 0.1.0
 
 - Make user intent, proposed headers, and actual rearranged sample rows the

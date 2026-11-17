@@ -12,6 +12,24 @@ SQLite export contract; it does not establish OCR accuracy or live migration.
 - No company classification mapping or external master is provided.
 - No purchase-order/statement relationship is asserted or created.
 
+The supplied `procurement-example-v1` model is defined for these two text
+fixtures and their headers/totals/numbered rows. Its decision basis is the
+explicit worked contract in the design skill, not inferred ERP compatibility.
+This example demonstrates conversion after review; generating SQL does not
+itself define or approve an unreviewed model.
+
+| Source region | Model destination | Coverage status |
+|---|---|---|
+| Both document headers and totals | `documents`, document-level `source_references` | `typed_mapped` |
+| Two order rows | `document_lines`, line-level `source_references` | `typed_mapped` |
+| Statement processing and charge rows | `document_lines`, line-level `source_references` | `typed_mapped` |
+| Explanatory fixture notes | Retained in original text; outside transaction columns | `excluded`: instructions about the fictional example, not additional transactions |
+
+The amount-only charge is structurally represented even though multiplication
+is not checkable. No extra page/sheet or industry layout is implied by this
+review. Additional unread material would be `unresolved`; saving an unmapped
+ledger as text would be `raw_only`, not additional business-model coverage.
+
 ## Expected output
 
 | Table | Rows | Meaning |
@@ -51,8 +69,14 @@ exclude unlisted private material, and preserve an existing release ZIP.
 
 ## Checks requiring a real agent/source environment
 
+The text-fixture tests compare source values and SQL/CSV mappings, verify
+arithmetic where possible, and exercise database constraints/read-back. They
+do not test image/OCR accuracy, host capabilities or target-system fit.
+In real runs, report these check categories separately, including source-internal
+conflicts and not-checked/not-checkable reasons. Mapped does not mean validated.
+
 Use representative PDFs, workbooks, or images to evaluate merged cells,
 continuations with competing candidates, incomplete OCR, source subtotals,
-unknown columns, and contract changes. Verify behavior and located findings,
-not merely matching prose. Those host integrations are not exercised by the
-standard-library fixture tests.
+unknown columns, full-scope coverage reviews and contract changes. Verify
+behavior and located findings, not merely matching prose. Those host
+integrations are not exercised by the standard-library fixture tests.

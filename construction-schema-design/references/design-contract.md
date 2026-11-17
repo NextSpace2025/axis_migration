@@ -5,15 +5,73 @@
 Provide these in the requested format; a compact Markdown proposal is enough
 unless the user asks for files:
 
-1. Scope: document family, inspected layouts, table grain, and limitations.
+1. Scope and model evidence: requested files, inspected layouts, actual reading
+   capabilities/limits, observed industry/workflow and document families. Link
+   each proposed entity, field, relationship and necessary function to located
+   evidence. Distinguish observations, derivations and unconfirmed proposals.
 2. ERD and table/column definitions with type, nullability, PK/FK, unit/currency
    meaning, and source-versus-derived status.
+   Separate shared document metadata from document-type-specific detail headers
+   and row meanings. Keep trade classification at three levels. For each
+   subdivided source item, include located evidence for the independent fields,
+   the original text, interpretation rule and missing-value handling; speculative
+   attributes are not source-based headers.
 3. Mapping rows: source file/layout, source label/location, target table/field,
    transformation, inherited-value source, and ambiguity or missing-value rule.
+   For reconstructed layouts, include the logical document/region identity,
+   content-based document type and evidence, reading method, contributing
+   locations, and target row/fields. Locate filename/content conflicts and keep
+   provisional classifications separate from confirmed ones.
 4. Representative sample rows and validation rules, including arithmetic,
    detail/subtotal separation, source coverage, and relationship checks.
-5. Contract version and optional company mapping/version. Record changes when
-   a later layout adds fields or changes a field's meaning.
+5. Coverage review and model decision: contract version, conversion scope,
+   decision basis, unresolved information, exclusions and optional company
+   mapping/version. Record later field/meaning changes as contract revisions.
+6. If a target system is supplied, a field/function fit comparison based on its
+   actual contract or implementation: `direct_map`, `transform_with_evidence`,
+   `proposed_extension`, or `unresolved`. Record target evidence/version;
+   uninspected capabilities are unverified, not absent. This does not authorize
+   production changes or transaction matching.
+7. A counterparty classification proposal using the
+   [classification guide](classification-guide.md), including recurring source
+   terms, mapping/version and decision status. Its leading columns are
+   `company_name`, `major_category` (trade), `middle_category` (activity),
+   `minor_category` (specific operation), `classification_basis`,
+   `source_reference`, displayed as 회사명, 대분류(공종), 중분류, 소분류,
+   분류기준, 원문 근거. Keep the reference buyer out of this counterparty table.
+
+## Coverage review and model decision
+
+Inventory every requested file and page/sheet. For each table/region and field
+group, record the source location, observed meaning, proposed target field or
+relationship, transformation/evidence, status and any issue/exclusion reason.
+Split mixed regions so that one mapped field cannot hide an uncovered meaning.
+Summarize file/layout coverage from these entries, including uninspected content.
+
+| Status | Meaning | Effect on a coverage claim |
+|---|---|---|
+| `typed_mapped` | Business meaning has an explicit typed destination and mapping | Represented; source accuracy and later conversion still need validation |
+| `raw_only` | Evidence retained but business meaning has no structured destination | Not represented in the business model; propose an extension or record the gap |
+| `unresolved` | Content unread, unsupported, or its meaning/mapping is uncertain | Not established; locate the missing review or decision |
+| `excluded` | Outside the stated conversion scope or a non-business/duplicate-copy region, with evidence and reason | Accounted for separately; never count as mapped or silently omit |
+
+Do not assign a single mapped status to a partially reviewed file. Reading a
+sample, saving OCR text, or obtaining matching totals does not establish full
+coverage. Show inspected and remaining scopes separately. Explicitly requested
+sampling can finish as a sample review, but cannot establish whole-folder fit.
+
+Keep model state separate from data validity. A proposal becomes defined for a
+stated scope when table/row meanings and mappings have no material ambiguity;
+record the user selection, supplied contract or unambiguous combined-request
+basis. Unknown source values can be represented by null plus an issue without
+inventing a value. Missing model structure returns to design. Preserve and
+report uncovered content; a partial conversion is not full requested coverage.
+Model definition alone never authorizes an unrequested conversion.
+
+For example, a fictional sheet has item detail in A1:H20 and payment/balance
+history in J1:M20. Mapping the item columns while saving the rest as text is
+`typed_mapped` for detail and `raw_only` for the ledger region, not full fit.
+A second unopened sheet is `unresolved` even if the first sheet totals reconcile.
 
 For SQL, state one target dialect. Honour a specified target. If the user asks
 for a standalone SQL file without naming a database, propose SQLite and disclose
@@ -88,14 +146,20 @@ supply 1200, tax 120, total 1320. No relationship to `EX-ST-001` is established.
 
 ## Design review before conversion
 
-- Can every sampled source field be preserved or accounted for explicitly?
+- Is every requested file/page/sheet accounted for, with reviewed fields/regions
+  mapped or given a located raw-only, unresolved or excluded reason?
+- Do entity/field/function proposals have evidence, and are optional company
+  categories separate from document type, activity and pricing basis?
 - Are parties, dates, quantity roles, units, and row roles unambiguous?
-- Are category/name mappings optional and traceable instead of guessed?
+- Are supplied category/name mappings optional and traceable instead of guessed?
+- Is the three-level classification proposal present even without a supplied
+  company map, with raw text evidence and uncertain levels exposed separately?
 - Do PK/FK and document/line ownership constraints prevent cross-document links?
 - Are precision, SQL dialect, null/empty handling, and validation rules stated?
 - Can the contract represent empty documents, charge-only rows, repeated real
   rows, split pages, and new columns without data loss?
 
-Resolve material design gaps before bulk conversion. Remaining source
-uncertainty may be represented as null plus a located issue; it must not be
-silently resolved to satisfy a constraint.
+Resolve material structural/mapping gaps for the conversion scope and record
+the model version/decision before bulk conversion. Remaining source uncertainty
+may be null plus a located issue; it must not be silently resolved to satisfy a
+constraint. Raw-only or excluded content remains visible in partial results.

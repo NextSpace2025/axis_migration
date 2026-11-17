@@ -1,0 +1,4 @@
+interface:
+  display_name: "Construction Document Matching"
+  short_description: "Link orders to statements and reconcile quantities"
+  default_prompt: "Use $construction-document-matching to link these purchase orders to the supplied statements through the supply chain, reconcile quantities, amounts and party identity with located evidence, and list unbilled or unmatched items."

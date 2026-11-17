@@ -1,4 +1,4 @@
 interface:
   display_name: "Construction Data Migration"
-  short_description: "Export construction records to CSV and SQL"
-  default_prompt: "Use $construction-data-migration to rearrange these PDF, spreadsheet, or image records into the proposed business columns, validate them, and show the populated local table."
+  short_description: "Convert reviewed models and verify data integrity"
+  default_prompt: "Use $construction-data-migration with this defined model and coverage review to convert the requested records, verify source accuracy and data integrity, and show the populated local table."

@@ -1,15 +1,20 @@
 # axis_migration
 
-An agent-guided migration tool that turns a folder of construction documents
-into purpose-specific, traceable data.
+An agent-guided tool that discovers industry- and company-appropriate data models
+from document contents, reviews their coverage, and converts records with evidence.
 
-**Inspect the folder → establish the purpose → decide headers → accumulate and
-validate records → migrate/export.**
+**Read the files → propose a data model → review whether it can hold all requested
+material → define the model → convert and verify the data.**
 
-The goal is to help users build a usable dataset over time, rather than impose
-a fixed company classification. PDF, XLSX/XLS and PNG/JPEG are interpreted using
-the host agent's available document tools. The visible result is a simple local,
-spreadsheet-like table.
+PDF, XLSX/XLS and PNG/JPEG contents provide evidence for document types, business
+activities, fields, relationships and necessary functions. A stated business
+purpose helps prioritize the model; its absence does not block discovery.
+Counterparty classifications are proposed as company name → construction trade →
+activity → specific operation → classification basis → source evidence, using
+the [starter classification guide](construction-schema-design/references/classification-guide.md).
+Supplied company mappings remain optional; proposals are distinct from defined
+company policy. Requested conversion
+produces traceable business data and a simple local, spreadsheet-like table.
 
 An open-source project by [Axis Lab](https://github.com/NextSpace2025), supporting
 the path from construction documents to reliable operational data and match_flow.
@@ -19,26 +24,39 @@ the path from construction documents to reliable operational data and match_flow
 [Request an initial data assessment](https://github.com/NextSpace2025/axis_migration/issues/new?title=Initial%20data%20assessment) ·
 [About match_flow](#match_flow)
 
-Start with purchase orders and transaction statements. Discover the source
-structure, propose a reusable contract, then extract and validate the records.
-Company classifications and ledger formats are optional local mappings.
+Construction procurement is the first worked example. Other document families
+need their own evidenced concepts and row meanings. Preserve source information
+before adapting it to an existing system's headers.
 
 | Need | Skill | Result |
 |---|---|---|
-| Discover headers, types, entities, and relationships | [construction-schema-design](construction-schema-design/SKILL.md) | ERD, field dictionary, source mapping, sample rows |
-| Convert documents using an explicit contract | [construction-data-migration](construction-data-migration/SKILL.md) | CSV and/or SQL files, provenance, validation report |
+| Discover and review a document-based model | [construction-schema-design](construction-schema-design/SKILL.md) | Model evidence, ERD, fields, mappings, actual rows, coverage review and model decision |
+| Convert using a defined model and coverage review | [construction-data-migration](construction-data-migration/SKILL.md) | Local SQLite and/or requested CSV/SQL, provenance and integrity findings |
+| Match orders to statements across the supply chain | [construction-document-matching](construction-document-matching/SKILL.md) | Evidenced links, quantity/amount/party findings and open (unbilled) items |
 
 ```mermaid
 flowchart LR
-    A[Inspect folder and document layouts] --> B[Establish intended use]
-    B --> C[Decide headers and row meaning]
-    C --> D[Map and compare real samples]
-    D --> E[Accumulate and validate records]
+    A[Read file contents] --> B[Propose model with evidence]
+    B --> C[Review full requested coverage]
+    C -->|Unrepresented meanings| B
+    C --> D[Define model version and scope]
+    D -->|Conversion requested| E[Convert and verify]
     E --> F[Local table / SQLite / CSV / SQL]
     G[New or revised documents] --> A
-    E --> H[Review gaps and contract changes]
-    H --> C
+    E -->|New meanings| B
 ```
+
+Coverage review accounts for files, pages/sheets, regions and fields as
+`typed_mapped`, `raw_only`, `unresolved`, or `excluded`, with targets or located
+reasons. Raw storage does not prove business-model fit, and sample review does
+not prove whole-folder coverage. Revise the model for uncovered meanings and
+report the remaining scope honestly. A defined model can retain unknown source
+values as null with issues; it does not require inventing data or approving every
+header separately. Design-only requests end with the model and review.
+
+After requested conversion, distinguish source-reading accuracy, semantic
+mapping, source-internal conflicts, arithmetic and database integrity. Matching
+totals alone cannot establish correct OCR or interpretation.
 
 ## What is included
 
@@ -62,16 +80,29 @@ The first worked domain is procurement. Contracts, progress claims, labour,
 equipment, ledgers, and inspections can reuse the process after their own
 schema discovery. The purchase-order example is not a universal ERP schema.
 
+For disorganized folders, the skills use
+[content-first classification and table reconstruction](construction-schema-design/references/intent-to-table.md#content-first-classification-and-table-reconstruction):
+extract located cells/text/image evidence, identify logical documents and table
+regions, then propose and review common business columns before requested
+conversion. Native spreadsheet cells take precedence over OCR. Folder/file
+names are hints; content determines the classification, with conflicts and
+uncertainty reported. Sources stay unchanged; rearranged records go into separate
+outputs with links back to their original pages/cells. This is agent guidance,
+not a newly bundled OCR engine or automatic file organizer.
+
 ## Current scope and next milestone
 
 | Capability | Status |
 |---|---|
-| Folder discovery, purpose-specific headers, source mappings | Agent skill workflow |
+| Document-based model proposals and coverage reviews | Agent skill workflow; source and host capabilities determine what can be verified |
+| Evidence for necessary functions and target-system fit | Agent review using source records and supplied target evidence; not automatic ERP modification |
 | Document interpretation and row rearrangement | Performed by the host agent with available tools; layout-dependent |
 | SQLite table viewing and CSV/SQL downloads | Included local Python tool |
+| Statement arithmetic, cumulative and open-item reconciliation | Included local Python tool (`scripts/reconcile.py`); linking decisions stay with the agent |
 | Versioned package update, backup and rollback | Included explicit update tool |
 | Duplicate-safe incremental ingestion and schema evolution | Skill guidance; reusable engine and end-to-end acceptance tests still planned |
-| Upload UI, charts, ERP and PO/statement matching | Outside this release |
+| PO/statement matching and reconciliation | Agent skill workflow; links and findings support review, not payment approval |
+| Upload UI, charts and ERP | Outside this release |
 
 The next milestone is a repeatable accumulation workflow: the same source can be
 rerun without duplicate rows; revised documents are distinguished from new ones;
@@ -81,7 +112,15 @@ unverified data must remain visibly separate from validated business records.
 
 ## Local workspace and result viewer
 
-The skill installer below installs the two skill directories. To also use the
+Selecting an input folder starts or resumes its private
+`.axis_migration/record.md`. The agent records the company, scope, actual stage,
+classification/model decisions, result links and remaining work, then appends
+checkpoints. Later calls read it first, even with a different skill or host.
+This metadata folder is excluded from source discovery; business reports and
+exports keep the separate output location below. See the
+[folder record guide](construction-schema-design/references/folder-record.md).
+
+The skill installer below installs the skill directories. To also use the
 viewer, package updater and output instructions, clone this repository:
 
 ```sh
@@ -90,8 +129,9 @@ cd axis_migration
 ```
 
 Ask the agent to read `AGENTS.md` and `output/agents.md`, inspect your selected
-folder, establish its purpose, propose headers with real sample rows, then
-populate a fresh local database. Output goes to the source folder's parent:
+files, propose a model with actual source rows, and review the requested scope's
+coverage. Once the model is defined, requested migration populates a fresh local
+database. Output goes to the source folder's parent:
 `INPUT.parent/output/INPUT.name/RUN_ID/`. Company configuration and data stay
 outside this public repository.
 
@@ -101,6 +141,17 @@ python3 scripts/view_db.py /absolute/path/to/data.sqlite
 
 Open the printed loopback URL and select the business table. The viewer is
 read-only, requires Python 3.10+, and has no hosted API, CDN or telemetry.
+An optional private JSON catalog adds a grouped dashboard, table-purpose and
+interpretation guides, Korean column labels, and per-column meanings/units:
+
+```sh
+python3 scripts/view_db.py /absolute/path/to/data.sqlite --catalog /absolute/path/to/table_catalog.json
+```
+
+Keep company catalogs outside this repository. Original database fields, values,
+and CSV/SQL export names remain unchanged; missing units are not inferred.
+See the [2026-11-17 work log](docs/2026-11-17.md) for catalog fields and validation.
+
 Document interpretation still depends on the host agent; using a cloud model
 does not mean inference happens offline. This is a result viewer, not a browser
 upload or independent OCR application.
@@ -129,7 +180,7 @@ Requires **Node.js 22.20+**, npm/npx, Git, and access to npm and GitHub.
 Installation uses the [Vercel Labs skills CLI](https://github.com/vercel-labs/skills)
 at the tested version **1.9.0**. Run these commands in your terminal.
 
-Install both skills for **Codex, Claude Code, and Antigravity together**:
+Install all skills for **Codex, Claude Code, and Antigravity together**:
 
 ```sh
 npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a codex claude-code antigravity -s "*" --copy -y
@@ -155,7 +206,7 @@ npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a claude-code -s "*"
 npx --yes skills@1.9.0 add NextSpace2025/axis_migration -g -a antigravity -s "*" --copy -y
 ```
 
-`-g` makes the skills available across projects. `-s "*"` installs both skills
+`-g` makes the skills available across projects. `-s "*"` installs all skills
 from this repository, and `--copy` includes their references, examples,
 metadata, and licenses without relying on symlinks. `-y` skips installer prompts.
 Rerunning the command refreshes same-named skills; **back up local edits before
@@ -198,19 +249,20 @@ and is separate from checking that the skill files were installed correctly.
 
 ## Try it
 
-Schema discovery:
+Model proposal and coverage review:
 
-> Use construction-schema-design to inspect these purchase orders and
-> transaction statements. Propose English CSV headers, an SQLite schema,
-> source mappings, and sample rows. Preserve original labels and separate
-> reported work area from billed quantity. No company classification map is
-> available.
+> Use construction-schema-design to read the files in this folder and propose
+> an industry-appropriate data model with evidence, English field names and
+> actual sample rows. Review whether it can hold all requested material;
+> identify raw-only, unresolved and excluded content. Record the model version
+> and decisions. Preserve original labels and quantity roles. Do not convert yet.
 
 Migration:
 
-> Use construction-data-migration with this schema and mapping. Produce CSV and
-> a standalone SQLite SQL file in a new output directory. Preserve source
-> values and locations; report unreadable values and arithmetic discrepancies.
+> Use construction-data-migration with this defined model and coverage review.
+> Produce CSV and a standalone SQLite SQL file in a new output directory.
+> Preserve source values and locations; separate reading, mapping, source
+> conflicts, arithmetic and database findings. Report remaining coverage gaps.
 > Validate the SQL in a disposable database and report what was verified.
 
 SQL defaults to SQLite when no target is supplied. The example stores exact
@@ -246,9 +298,13 @@ reviewed public-only checkout; do not upload a ZIP of the entire working folder.
 purchase orders with transaction statements so that construction businesses
 can connect procurement records with ongoing operational management.
 
-**axis_migration** supports the earlier data-preparation stage: understand the
-documents, define a usable schema, convert records, and make data-quality gaps
-visible. Its CSV and SQL exports remain useful with your existing systems.
+**axis_migration** supports the earlier model-discovery and readiness stage:
+propose a model from actual documents, review its source coverage, and compare
+necessary fields/functions with match_flow or another supplied target. Classify
+the fit as direct mapping, evidenced transformation, proposed extension or
+unresolved; do not infer unsupported features from an uninspected target.
+Then perform requested conversion and integrity checks. CSV and SQL exports
+remain useful with existing systems.
 Import integration with match_flow is a future, separately specified step;
 this repository contains the skills and examples, not the ERP or matching engine.
 
@@ -260,7 +316,9 @@ Start with a scoped assessment before planning a full migration or ERP rollout.
 An initial engagement can produce:
 
 - A document/layout inventory and a clear definition of each record type.
-- Proposed CSV headers, database tables, relationships, and source mappings.
+- Evidence-backed headers, tables, relationships, necessary functions and mappings.
+- A coverage review identifying represented, raw-only, unresolved and excluded
+  information before the model is defined for conversion.
 - A sample CSV/SQL conversion with traceable validation findings.
 - A gap report covering missing values, inconsistent units, repeated records,
   and the decisions needed for a larger migration.
