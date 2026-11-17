@@ -152,6 +152,18 @@ Keep company catalogs outside this repository. Original database fields, values,
 and CSV/SQL export names remain unchanged; missing units are not inferred.
 See the [2026-11-17 work log](docs/2026-11-17.md) for catalog fields and validation.
 
+To return to earlier work, ask: "이 입력 폴더의 지난 결과 화면 다시 열어줘"
+and supply the input folder or result location. The agent uses the private record
+to find the saved run, without converting the sources again. New viewer deliveries
+include a `reopen.md` guide and a verified OS-specific "다시 열기" launcher in
+the result directory. Older runs can have these added when reopened.
+
+Closing the browser tab does not stop the viewer: reuse its URL while the server
+is running. If the server stopped, use the launcher or the saved start command
+and open the newly printed URL; its port may differ. Preserve `--catalog` when
+used so the dashboard descriptions and column labels return as well. Static
+HTML reports can be opened directly from their saved files.
+
 Document interpretation still depends on the host agent; using a cloud model
 does not mean inference happens offline. This is a result viewer, not a browser
 upload or independent OCR application.

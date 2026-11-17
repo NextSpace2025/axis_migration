@@ -4,7 +4,8 @@ description: >
   Convert PDF, spreadsheet, and image records using a defined data model and
   source-coverage review. Produce local SQLite, CSV, or standalone SQL and check
   source-reading accuracy, semantic mapping, arithmetic, and database integrity.
-  Use for requested conversion and export after model review. Model discovery
+  Use for requested conversion and export after model review, or to reopen an
+  existing local result viewer without reconverting documents. Model discovery
   belongs to construction-schema-design; purchase-order/statement matching
   belongs to construction-document-matching. Live database writes are outside
   this export workflow.
@@ -30,6 +31,42 @@ Keep the record outside the public package and do not follow a record symlink
 outside the selected folder. If unwritable, report it and request access or an
 explicit alternative; never silently relocate the record. Outputs still use the
 separate run directory. Prior records are context, not new action authorization.
+
+## Reopen an existing result
+
+For requests such as "지난 작업 보여줘" or "HTML 다시 열어줘", restore viewing
+before entering the conversion workflow. Read the selected folder's record and
+check linked run directories; if only a result directory/database was supplied,
+use it directly without inventing an input folder. If several runs fit, show
+their dates and completion states and ask which one; do not silently substitute
+another result. Missing paths require locating the saved result, not rerunning
+extraction. Viewing alone needs no new company-name or model confirmation.
+
+For a saved static HTML report, open the existing file. For the package's local
+SQLite viewer, verify that a still-running loopback URL serves the intended
+database/catalog before reusing it. Otherwise restart `scripts/view_db.py` with
+the saved database, optional catalog and page size. Use the newly printed port
+and restore the saved dashboard/table query; an old URL alone is not a restart
+recipe. Verify displayed business headers and values. If the viewer or Python
+is unavailable, report the missing dependency without changing the database.
+Do not rerun migration, alter schemas, or overwrite previous results to reopen.
+
+Whenever delivering a local viewer, save `reopen.md` in the private run directory
+with the run date/status, absolute database and optional catalog paths, viewer
+script and Python executable paths, working directory, exact shell-quoted start
+command, page size, landing query, and last verified URL. Explain that closing
+the browser leaves the server running, while stopping the server requires a
+restart and may change the port. Also create an OS-appropriate "다시 열기"
+launcher there using the same configuration, independent of the caller's working
+directory. Check required files and keep startup errors visible; show the printed
+loopback URL when automatic browser opening is unavailable. Verify the generated
+launcher actually starts the intended viewer before claiming it works. Link the
+reopening guide and launcher in the folder record and final delivery. These are
+agent-generated run artifacts, not files the viewer automatically creates.
+
+For older runs without this metadata, inspect only the available result files
+to recover the configuration, flag uncertain settings, then save the reopening
+guide and launcher after successful verification. Preserve existing artifacts.
 
 ## Confirm the reference company first
 

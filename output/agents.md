@@ -134,6 +134,12 @@ run or write to an existing business database as a side effect.
 
 ## Local table page
 
+For requests to reopen previous work, follow the migration skill's
+[reopening workflow](../construction-data-migration/SKILL.md#reopen-an-existing-result)
+instead of starting model discovery or conversion. Locate the requested run
+from the private folder record or an explicitly supplied result path. A saved
+HTML report can be opened directly; a SQLite viewer needs its local server.
+
 Run `python3 scripts/view_db.py /absolute/path/to/data.sqlite` from the package.
 The page lists tables and displays rows with pagination and CSV/SQL downloads.
 Open the primary mapped business table using the `table` query parameter and
@@ -142,3 +148,8 @@ does not satisfy this workflow; report unprocessed or unmapped sources clearly.
 It binds only to `127.0.0.1` and reads the chosen database without modifying it.
 Stop with Ctrl+C. Document extraction is performed by the skills in the agent;
 this simple page is the result viewer, not an independent OCR/AI application.
+
+On delivery, save a private `reopen.md` and verified OS-appropriate "다시 열기"
+launcher in the run directory as specified by the reopening workflow. Retain
+the exact database, catalog, landing query and executable configuration, not
+just the temporary URL. Link these artifacts from the folder record and reply.
