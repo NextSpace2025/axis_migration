@@ -36,6 +36,7 @@
     "construction-schema-design/references/intent-to-table.md",
     "output/agents.md",
     "public-files.json",
+    "scripts/axis_mcp.py",
     "scripts/package_public.py",
     "scripts/reconcile.py",
     "scripts/review_headers.html",

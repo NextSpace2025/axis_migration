@@ -122,8 +122,10 @@ the folder workflow in one command:
 python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기준 회사명"
 ```
 
-The runner invokes the design skill and opens **헤더 검토** on loopback. Review the
-proposed columns by table. Use **확인 필요만** to focus on uncertain mappings and
+The runner invokes the design skill and opens **관계도** on loopback. Select a
+table or connection to see its design rationale, source examples and original
+locations. Open **헤더 검토** to review the proposed columns by table. Use
+**확인 필요만** to focus on uncertain mappings and
 **근거가 있는 헤더 일괄 적용** to select supported mappings with real examples. Edit
 individual column names to split or combine mappings, or choose **원문 보관**
 to preserve a source field outside the typed table. **적용 미리보기** shows rows
@@ -134,7 +136,8 @@ shows the sheet/cell and captured value, with a link to open the workbook.
 
 Use **검토 저장** to pause and resume. **이 구조로 확정하고 변환** saves
 `approved-schema.json` and starts the migration skill. The runner verifies
-SQLite and the approved columns and opens the loopback result page. The sidebar
+the SQLite database and compares its columns, primary keys and foreign keys
+with the approved structure before opening the loopback result page. The sidebar
 links to the file inventory and evidence for file–company/site links, and to
 actual SQLite foreign keys. The relationship views use clickable lists. The
 separate 3D renderer is available for graph hosts through the existing
@@ -153,6 +156,19 @@ saved coverage report for unread or unresolved material. The run retains
 `structure.md`, `header-proposal.json`, `header-draft.json`,
 `approved-schema.json`, `data.sqlite`, `export.sql`, `validation.md`, `viewer.json`,
 `status.json`, and reopening instructions. The port is assigned on startup.
+
+### Optional local MCP entry point
+
+Install the MCP Python SDK with `python -m pip install "mcp>=1.28,<2"`. Register
+a local stdio server in your MCP client using `python` and the absolute path to
+`scripts/axis_mcp.py` as its argument. Use the Python installation that has the SDK.
+The MCP tools use the same local runner and its configured Codex CLI.
+
+1. Call `start_folder` with an absolute `input_dir` and the reference `company`.
+2. Call `folder_status` with the returned `run_dir` to get the actual stage and
+   the active `viewer_url`. Open the URL on the same computer to review and confirm.
+3. Use `close_folder` to close the review or result server. Use `resume_folder`
+   to continue a stopped run or reopen finished results.
 
 Selecting an input folder starts or resumes its private
 `.axis_migration/record.md`. The agent records the company, scope, actual stage,

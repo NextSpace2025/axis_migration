@@ -21,7 +21,7 @@ class WorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "문서"
             source.mkdir()
-            (source / "example.txt").write_text("supplier: Example", encoding="utf-8")
+            (source / "example.txt").write_text("supplier: Example\nnumber: DOC-1", encoding="utf-8")
             called = []
 
             def agent(prompt, run, metadata):
@@ -32,6 +32,9 @@ class WorkflowTests(unittest.TestCase):
                         "files": [{"path": "example.txt", "status": "typed_mapped", "detail": "Line 1"}],
                         "tables": [{
                             "name": "lines", "label": "내역", "row_meaning": "한 줄",
+                            "reason": "한 문서에 여러 내역이 들어갑니다.",
+                            "generated_keys": {"id": "INTEGER", "doc": "INTEGER"},
+                            "primary_key": ["id"],
                             "purposes": [{"question": question, "headers": [0], "gaps": [],
                                           "basis": "거래처가 적힌 첫 줄"}
                                          for question in ("어느 업체가 공급했나요?", "업체별 내역은 무엇인가요?")],
@@ -41,20 +44,39 @@ class WorkflowTests(unittest.TestCase):
                             "rows": [{"file": "example.txt", "location": "1행", "page": None,
                                       "cells": [{"mapping": 0, "location": "1행", "original": "Example",
                                                  "applied": "Example"}]}],
+                        }, {
+                            "name": "documents", "label": "문서", "row_meaning": "원본 문서 하나",
+                            "reason": "문서 번호를 문서마다 한 번 저장합니다.",
+                            "generated_keys": {"id": "INTEGER"},
+                            "primary_key": ["id"],
+                            "mappings": [{"column": "number", "label": "문서 번호", "type": "TEXT",
+                                          "meaning": "원본 문서 번호", "source_header": "number",
+                                          "rule": "파일에서 문서 번호를 읽음", "issue": "",
+                                          "files": ["example.txt"]}],
+                            "rows": [{"file": "example.txt", "location": "2행", "page": None,
+                                      "cells": [{"mapping": 0, "location": "2행", "original": "DOC-1",
+                                                 "applied": "DOC-1"}]}],
+                        }],
+                        "relationships": [{
+                            "from_table": "lines", "from_columns": ["doc"],
+                            "to_table": "documents", "to_columns": ["id"],
+                            "reason": "내역은 같은 원본에 적힌 문서 번호를 참조합니다.",
+                            "examples": [{"from_row": 0, "to_row": 0}],
                         }],
                     })
                 elif len(called) == 2:
                     self.assertIn("approved-schema.json", prompt)
-                    self.assertEqual(workflow.read_object(run / workflow.APPROVAL)["tables"][0]
-                                     ["mappings"][0]["column"], "vendor")
+                    approval = workflow.read_object(run / workflow.APPROVAL)
+                    self.assertEqual(approval["tables"][0]["mappings"][0]["column"], "vendor")
+                    self.assertEqual(approval["relationships"][0]["from_columns"], ["doc"])
                     return {"state": "waiting", "reason": "원본 단위 확인"}
                 else:
                     self.assertIn("개", prompt)
                     with closing(sqlite3.connect(run / "data.sqlite")) as db:
                         db.executescript("""
-                            CREATE TABLE documents(id INTEGER PRIMARY KEY);
+                            CREATE TABLE documents(id INTEGER PRIMARY KEY, number TEXT);
                             CREATE TABLE lines(id INTEGER PRIMARY KEY, doc INTEGER REFERENCES documents(id), vendor TEXT);
-                            INSERT INTO documents VALUES (1);
+                            INSERT INTO documents VALUES (1, 'DOC-1');
                             INSERT INTO lines VALUES (1, 1, 'Example');
                         """)
                     (run / "validation.md").write_text("Checked sample", encoding="utf-8")
@@ -73,11 +95,15 @@ class WorkflowTests(unittest.TestCase):
                 if not urlsplit(url).query:
                     review_visits.append(url)
                     with urlopen(url, timeout=5) as response:
-                        self.assertIn("헤더 검토", response.read().decode())
+                        page = response.read().decode()
+                        self.assertIn("관계도", page)
+                        self.assertIn("내역은 같은 원본에 적힌 문서 번호를 참조합니다.", page)
                     with urlopen(url + "source/example.txt", timeout=5) as response:
                         self.assertIn("supplier: Example", response.read().decode())
-                    previous = {"lines": [{"column": "supplier", "action": "pending"}]}
-                    updated = {"lines": [{"column": "vendor", "action": "use"}]}
+                    previous = {"lines": [{"column": "supplier", "action": "pending"}],
+                                "documents": [{"column": "number", "action": "pending"}]}
+                    updated = {"lines": [{"column": "vendor", "action": "use"}],
+                               "documents": [{"column": "number", "action": "use"}]}
                     split = urlsplit(url)
 
                     def post(route, decisions, prior):
@@ -125,3 +151,37 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(workflow.read_status(run), saved)
                 self.assertEqual(len(called), 3)
                 self.assertTrue((run / "export.sql").is_file())
+
+    def test_renamed_composite_relationship_must_exist_in_sqlite(self):
+        proposal = {"relationships": [{
+            "from_table": "lines", "from_columns": ["source", "order_no"],
+            "to_table": "orders", "to_columns": ["site", "number"],
+        }]}
+        tables = [{
+            "name": "orders", "generated_keys": {"site": "TEXT", "number": "TEXT"},
+            "primary_key": ["site", "number"], "mappings": [],
+        }, {
+            "name": "lines", "generated_keys": {"source": "TEXT"}, "primary_key": [],
+            "mappings": [{"proposed_column": "order_no", "column": "order_number",
+                          "type": "TEXT", "action": "use"}],
+        }]
+        model = workflow.approved_model(proposal, tables)
+        self.assertEqual(model["relationships"][0]["from_columns"], ["source", "order_number"])
+        approved = {"tables": tables, **model}
+        with closing(sqlite3.connect(":memory:")) as db:
+            db.executescript("""
+                CREATE TABLE orders(site TEXT, number TEXT, PRIMARY KEY(site, number));
+                CREATE TABLE lines(source TEXT, order_number TEXT);
+            """)
+            self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+            with self.assertRaisesRegex(ValueError, "확정한 외래 키가 SQLite에 없습니다"):
+                workflow.verify_model(db, approved)
+            db.executescript("""
+                DROP TABLE lines;
+                CREATE TABLE lines(source TEXT, order_number TEXT,
+                    FOREIGN KEY(source, order_number) REFERENCES orders);
+            """)
+            workflow.verify_model(db, approved)
+        tables[1]["mappings"][0]["action"] = "raw_only"
+        with self.assertRaisesRegex(ValueError, "lines.order_no"):
+            workflow.approved_model(proposal, tables)

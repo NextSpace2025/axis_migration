@@ -20,7 +20,7 @@ from uuid import uuid4
 import webbrowser
 
 from review_headers import (APPROVAL, DRAFT, PROPOSAL, PROPOSAL_INSTRUCTIONS, check_proposal,
-                            decision_tables, proposal_digest, read_object, review_server,
+                            approved_model, decision_tables, proposal_digest, read_object, review_server,
                             save_object, source_snapshot)
 from run_status import PACKAGE, read_status, render, write_status
 from view_db import identifier, make_handler
@@ -52,8 +52,10 @@ unresolved files in the scope review; never manufacture a link or label it confi
 without source support. In a retry, replace only incomplete stage artifacts within
 this run. Leave structure.md and all prior runs and originals intact."""
 
-APPROVED_MIGRATION = """approved-schema.json is the user-confirmed mapping. Retain
-all reviewed source scope, keys, provenance and constraints from structure.md,
+APPROVED_MIGRATION = """approved-schema.json is the user-confirmed mapping. When
+present, use tables[].generated_keys and apply the top-level primary_keys and
+relationships as SQLite key declarations in their approved column names and order.
+Keep other reviewed source scope, provenance and constraints from structure.md,
 using the confirmed names and declared SQLite types for mappings with action=use.
 For a mapping with action=raw_only preserve its original values with provenance
 outside the typed mapping. Preview rows are evidence, not a replacement for
@@ -94,6 +96,47 @@ def run_agent(prompt, run, metadata):
     if result.get("state") not in ("ready", "waiting", "error") or not isinstance(result.get("reason"), str):
         raise ValueError("분석 단계의 응답을 확인할 수 없습니다.")
     return result
+
+
+def verify_model(db, approved):
+    primary_keys = {}
+    for table in approved["tables"]:
+        name = table["name"]
+        expected = {field["column"]: field["type"] for field in table["mappings"]
+                    if field["action"] == "use"}
+        expected.update(table.get("generated_keys", {}))
+        if not expected:
+            continue
+        info = db.execute(f"PRAGMA table_info({identifier(name)})").fetchall()
+        actual = {column[1]: column[2].upper() for column in info}
+        if any(actual.get(column) != kind for column, kind in expected.items()):
+            raise ValueError(f"확정한 열 이름 또는 자료형과 SQLite 결과가 다릅니다. {name}")
+        primary_keys[name] = tuple(row[1] for row in sorted(info, key=lambda row: row[5]) if row[5])
+        if "primary_keys" in approved and primary_keys[name] != tuple(approved["primary_keys"][name]):
+            raise ValueError(f"확정한 기본 키와 SQLite 결과가 다릅니다. {name}")
+    if "relationships" not in approved:
+        return
+    expected = {(edge["from_table"], edge["to_table"], tuple(edge["from_columns"]),
+                 tuple(edge["to_columns"])) for edge in approved["relationships"]}
+    actual = set()
+    for table in primary_keys:
+        groups = {}
+        for row in db.execute(f"PRAGMA foreign_key_list({identifier(table)})"):
+            if row[2].lower() in primary_keys:
+                groups.setdefault(row[0], []).append(row)
+        for group in groups.values():
+            rows = sorted(group, key=lambda row: row[1])
+            parent = rows[0][2].lower()
+            targets = tuple(row[4].lower() if row[4] else None for row in rows)
+            if all(target is None for target in targets):
+                targets = primary_keys[parent]
+            actual.add((table, parent, tuple(row[3].lower() for row in rows), targets))
+    for differences, message in ((expected - actual, "확정한 외래 키가 SQLite에 없습니다."),
+                                 (actual - expected, "확정하지 않은 외래 키가 SQLite에 있습니다.")):
+        if differences:
+            child, parent, sources, targets = min(differences, key=repr)
+            target_label = ", ".join(target or "기본 키" for target in targets)
+            raise ValueError(f"{message} {child}({', '.join(sources)}) → {parent}({target_label})")
 
 
 def verify(run, *, export=True):
@@ -139,14 +182,7 @@ def verify(run, *, export=True):
         if db.execute(f"SELECT 1 FROM {identifier(primary)} LIMIT 1").fetchone() is None:
             raise ValueError("업무 테이블에 변환한 행이 없습니다.")
         if approved:
-            for table in approved["tables"]:
-                expected = {field["column"]: field["type"] for field in table["mappings"]
-                            if field["action"] == "use"}
-                if expected:
-                    actual = {column[1]: column[2].upper() for column in db.execute(
-                        f'PRAGMA table_info({identifier(table["name"])})')}
-                    if any(actual.get(column) != kind for column, kind in expected.items()):
-                        raise ValueError(f"확정한 열 이름 또는 자료형과 SQLite 결과가 다릅니다. {table['name']}")
+            verify_model(db, approved)
         if export:
             path = run / "export.sql"
             if path.is_symlink():
@@ -330,8 +366,10 @@ def checked_approval(run, source, snapshot):
     proposal = read_object(run / PROPOSAL)
     check_proposal(proposal, snapshot)
     approval = read_object(run / APPROVAL)
-    if (approval["proposal"] != proposal_digest(run) or approval["files"] != proposal["files"] or
-            approval["tables"] != decision_tables(proposal, approval["decisions"], approve=True)):
+    tables = decision_tables(proposal, approval["decisions"], approve=True)
+    model = approved_model(proposal, tables)
+    if approval != {"proposal": proposal_digest(run), "files": proposal["files"], "tables": tables,
+                    "decisions": approval["decisions"], **model}:
         raise ValueError("확정 구조와 헤더 제안이 일치하지 않습니다. 검토 자료를 확인하세요.")
 
 
@@ -371,13 +409,13 @@ def process(args, source, run, record, prior, metadata):
             if review_enabled:
                 if source_snapshot(source) != snapshot:
                     raise ValueError("분석 중 원본 범위나 파일이 바뀌었습니다. 다시 분석하세요.")
-                check_proposal(read_object(run / PROPOSAL), snapshot)
+                check_proposal(read_object(run / PROPOSAL), snapshot, require_model=True)
                 metadata["snapshot"] = snapshot
             metadata["stage"] = "review" if review_enabled else "migration"
             save_object(state_path, metadata)
 
         if metadata["stage"] == "review":
-            stage = "헤더와 적용값 검토"
+            stage = "데이터 구조 검토"
             snapshot = metadata["snapshot"]
             if source_snapshot(source) != snapshot:
                 raise ValueError("검토할 원본 범위나 파일이 바뀌었습니다. 새 분석을 시작하세요.")
@@ -389,8 +427,8 @@ def process(args, source, run, record, prior, metadata):
                     results = ["structure.md", PROPOSAL]
                     if (run / DRAFT).is_file():
                         results.append(DRAFT)
-                    checkpoint(run, "waiting", stage, "원본에서 읽은 값으로 제안한 헤더를 검토할 수 있습니다.",
-                               results=results, pending=["브라우저에서 헤더와 적용값 확정"],
+                    checkpoint(run, "waiting", stage, "제안한 표와 연결 관계를 원본 예시로 검토할 수 있습니다.",
+                               results=results, pending=["브라우저에서 데이터 구조 확정"],
                                next_action="검토 주소를 열어 구조를 확정하세요. 종료 후 --resume 결과폴더로 이어갈 수 있습니다.")
 
                 review_checkpoint()
@@ -424,6 +462,7 @@ def process(args, source, run, record, prior, metadata):
                 return 2
             if review_enabled:
                 checked_approval(run, source, metadata["snapshot"])
+            stage = "확정한 구조와 SQLite 결과 확인"
             verified = verify(run)
             metadata["stage"] = "viewer"
             save_object(state_path, metadata)
@@ -450,6 +489,7 @@ def process(args, source, run, record, prior, metadata):
     except (OSError, ValueError, TypeError, KeyError, sqlite3.Error, subprocess.SubprocessError) as error:
         record_entry(record, f"- Error at {stage}: {error}")
         checkpoint(status_run, "error", stage, "작업 중 오류가 발생했습니다.", error=str(error),
+                   checks="failed" if stage == "확정한 구조와 SQLite 결과 확인" else "not_run",
                    next_action="오류 원인을 확인한 후 --resume 결과폴더로 재개합니다.")
         return 1
     finally:

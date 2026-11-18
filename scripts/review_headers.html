@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>헤더 검토 · Axis Migration</title>
+<title>데이터 구조 검토 · Axis Migration</title>
 <style>
 :root{color-scheme:light;--ink:#172033;--muted:#536176;--line:#d5dfe9;--paper:#fff;--panel:#f2f5f9;--accent:#194f88}
 *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font:14px/1.55 system-ui,sans-serif}
@@ -29,33 +29,50 @@ td small{display:block;margin-top:2px}.source-head{min-width:134px}.value{min-wi
 .text-button{border:0;background:transparent;color:var(--accent);text-align:left;text-decoration:underline;text-underline-offset:3px;padding:2px 0;overflow-wrap:anywhere}
 aside{background:var(--panel);border:1px solid var(--line);padding:16px;position:sticky;top:14px;overflow-wrap:anywhere}
 aside dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 14px}aside dt{font-weight:650}aside dd{margin:0;white-space:pre-wrap}
+.schema-scroll{overflow:auto;border:1px solid var(--line);background:#f7f9fc;margin:12px 0 18px}
+.schema-stage{position:relative;max-width:720px;min-width:370px;margin:auto}
+.schema-stage svg{position:absolute;inset:0;width:100%;height:100%}
+.schema-edge{fill:none;stroke:#647d99;stroke-width:1.9;vector-effect:non-scaling-stroke}
+.schema-edge-hit{fill:none;stroke:transparent;stroke-width:16;cursor:pointer}
+.schema-edge-pair:hover .schema-edge,.schema-edge-pair.selected .schema-edge{stroke:var(--accent);stroke-width:3}
+.schema-table{position:absolute;height:64px;text-align:left;padding:8px 10px}
+.schema-table strong,.schema-table small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schema-table[aria-pressed=true],.schema-link[aria-pressed=true]{background:#dce9f8;border-color:var(--accent)}
+.schema-list{list-style:none;padding:0;display:grid;gap:6px;margin:7px 0 0}
+.schema-link{text-align:left;max-width:100%;overflow-wrap:anywhere}
+.schema-example,#schema-source{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+#schema-source:empty{display:none}
+.schema-detail{margin:8px 0}
+.schema-example ul{margin:4px 0 0;padding-left:18px}
+#evidence{max-height:calc(100vh - 95px);overflow:auto}
 iframe{display:block;width:100%;height:310px;border:1px solid var(--line);background:#fff;margin-top:12px}
 footer{position:sticky;bottom:0;background:white;border-top:1px solid var(--line);border-bottom:0;justify-content:flex-end}
 #message{flex:1;min-width:200px}#message[data-error=true]{color:#9a261f}.primary{background:var(--accent);color:white;border-color:var(--accent);font-weight:650}.primary:hover{background:#123c68}
 #message:empty{display:none}
-@media(max-width:850px){main{grid-template-columns:minmax(0,1fr);gap:14px}aside{position:static}.scroll{max-height:48vh}}
+@media(max-width:850px){main{grid-template-columns:minmax(0,1fr);gap:14px}aside{position:static}#evidence{max-height:none}.scroll{max-height:48vh}}
 </style>
 </head>
 <body>
-<header><h1>헤더 검토</h1><p id="folder"></p></header>
+<header><h1>데이터 구조 검토</h1><p id="folder"></p></header>
 <nav aria-label="검토 화면">
+  <button data-view="structure" aria-current="true">관계도</button>
   <button data-view="purposes">업무별 헤더</button>
-  <button data-view="headers" aria-current="true">헤더 검토</button>
+  <button data-view="headers">헤더 검토</button>
   <button data-view="preview">적용 미리보기</button>
   <button data-view="coverage">폴더 전체 확인</button>
   <span id="counts"></span>
 </nav>
 <main>
   <div>
-    <div class="toolbar" id="filters">
+    <div class="toolbar" id="filters" hidden>
       <input id="search" type="search" aria-label="헤더 또는 원본 표기 검색" placeholder="헤더 또는 원본 표기 검색">
       <label><input type="checkbox" id="issues"> 확인 필요만</label>
       <button id="accept">근거가 있는 헤더 일괄 적용</button>
     </div>
     <div id="content"></div>
   </div>
-  <aside id="evidence" aria-label="원본 근거" tabindex="-1">
-    <h2>원본 근거</h2><p class="muted">적용값을 누르면 원본 위치와 값을 볼 수 있습니다.</p>
+  <aside id="evidence" aria-label="선택한 항목의 근거" tabindex="-1">
+    <h2>설계 근거</h2><p class="muted">관계도에서 표나 연결선을 선택하세요.</p>
   </aside>
 </main>
 <footer>
@@ -66,7 +83,8 @@ footer{position:sticky;bottom:0;background:white;border-top:1px solid var(--line
 <script>
 const {proposal, decisions, folder} = /* AXIS_DATA */;
 let lastSaved = structuredClone(decisions);
-let view = "headers";
+let view = "structure";
+let structureSelection = null;
 let busy = false;
 let approved = false;
 const byId = id => document.getElementById(id);
@@ -105,10 +123,14 @@ function grid(parent, heads, summary) {
   for (const head of heads) node(line, "th", head).scope = "col";
   return node(table, "tbody");
 }
-function evidence(row, cell, mapping, edit) {
-  const panel = byId("evidence");
+function focusEvidence(panel) {
+  panel.focus({preventScroll:true});
+  if (panel.id === "schema-source") panel.scrollIntoView({block:"nearest"});
+  else if (innerWidth <= 850) panel.scrollIntoView({block:"start"});
+}
+function evidence(row, cell, mapping, edit, panel = byId("evidence")) {
   panel.replaceChildren();
-  node(panel, "h2", "원본 근거");
+  node(panel, panel.id === "schema-source" ? "h3" : "h2", "원본 근거");
   const pairs = [["파일",row.file],["위치",cell.location],["원본 값",cellText(cell.original)],
     ["적용값",cellText(cell.applied)],["넣을 열",edit.column],["읽는 규칙",mapping.rule]];
   const definition = node(panel, "dl");
@@ -127,13 +149,12 @@ function evidence(row, cell, mapping, edit) {
     frame.src = link.href + (isPDF && row.page ? "#page=" + row.page : "");
     link.href = frame.src;
   } else link.textContent = "원본 파일 받기";
-  panel.focus({preventScroll:true});
-  if (innerWidth <= 850) panel.scrollIntoView({block:"nearest"});
+  focusEvidence(panel);
 }
-function valueButton(parent, table, row, cell) {
+function valueButton(parent, table, row, cell, panel) {
   const button = node(parent, "button", cellText(cell.applied), "text-button");
   button.setAttribute("aria-label", `${cellText(cell.applied)} · ${row.file} · ${cell.location} 근거 보기`);
-  button.onclick = () => evidence(row, cell, table.mappings[cell.mapping], decisions[table.name][cell.mapping]);
+  button.onclick = () => evidence(row, cell, table.mappings[cell.mapping], decisions[table.name][cell.mapping], panel);
 }
 function showHeaders(table, section) {
   const query = byId("search").value.trim().toLowerCase();
@@ -203,11 +224,163 @@ function showPreview(table, section) {
     }
   }
 }
+function schemaElement(parent, tag, attributes) {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+  parent.append(element);
+  return element;
+}
+function relationPath(from, to, index) {
+  const offset = (index % 5 - 2) * 5;
+  const sameColumn = from.left === to.left;
+  const exitRight = sameColumn ? from.left > 270 : from.left < to.left;
+  const enterRight = sameColumn ? exitRight : !exitRight;
+  const x1 = from.left + (exitRight ? 164 : 0);
+  const x2 = to.left + (enterRight ? 164 : 0);
+  const direction = exitRight ? 1 : -1;
+  const rail = sameColumn ? x1 + direction * 33 + offset : 270 + offset;
+  const y1 = from.y + offset;
+  const y2 = to.y + offset;
+  if (from === to) {
+    return `M ${x1} ${y1 - 9} H ${rail} V ${y1 + 9} H ${x1 + direction * 3}`;
+  }
+  return `M ${x1} ${y1} H ${rail} V ${y2} H ${x2 + (rail > x2 ? 3 : -3)}`;
+}
+function keyLabel(table, columns) {
+  return columns.map(column => {
+    const names = [...new Set(table.mappings.flatMap((field, index) => {
+      const edit = decisions[table.name][index];
+      return field.column === column && edit.action !== "raw_only" ? [edit.column] : [];
+    }))];
+    return names.join(" / ") || column;
+  }).join(", ");
+}
+function schemaExample(section, table, row, keys, source) {
+  const example = node(section, "div", undefined, "schema-example");
+  node(example, "h3", table.label);
+  node(example, "small", row.file + " · " + row.location);
+  const matched = keys ? row.cells.filter(cell => keys.includes(table.mappings[cell.mapping].column)) : [];
+  const cells = matched.length ? matched : row.cells;
+  const list = node(example, "ul");
+  for (const cell of cells) {
+    const item = node(list, "li");
+    node(item, "span", table.mappings[cell.mapping].source_header + " · ");
+    valueButton(item, table, row, cell, source);
+  }
+}
+function showStructureDetail(tables) {
+  const panel = byId("evidence");
+  panel.replaceChildren();
+  const table = tables.get(structureSelection);
+  const edge = Number.isInteger(structureSelection) ? proposal.relationships[structureSelection] : null;
+  node(panel, "h2", table ? table.label : edge ? "연결 근거" : "설계 근거");
+  if (!table && !edge) {
+    node(panel, "p", "관계도에서 표나 연결선을 선택하세요.", "muted");
+    return;
+  }
+  const examples = node(panel, "div");
+  const source = node(panel, "div");
+  source.id = "schema-source";
+  source.tabIndex = -1;
+  if (table) {
+    node(examples, "p", "한 행 · " + table.row_meaning, "schema-detail");
+    node(examples, "p", table.reason || "이 표를 나눈 이유는 별도 설계 문서에서 확인하세요.", "schema-detail");
+    if (table.primary_key?.length) {
+      node(examples, "p", "기본 키 · " + keyLabel(table, table.primary_key), "schema-detail");
+    }
+    if (!table.rows.length) node(examples, "p", "확인된 원본 예시가 없습니다.", "muted");
+    for (const row of table.rows) schemaExample(examples, table, row, null, source);
+    return;
+  }
+  const from = tables.get(edge.from_table);
+  const to = tables.get(edge.to_table);
+  node(examples, "p", `${from.label} (${keyLabel(from, edge.from_columns)}) → ${to.label} (${keyLabel(to, edge.to_columns)})`,
+       "schema-detail");
+  node(examples, "p", edge.reason, "schema-detail");
+  if (!edge.examples.length) node(examples, "p", "두 표를 함께 보여줄 원본 예시가 없습니다.", "muted");
+  for (const pair of edge.examples) {
+    const group = node(examples, "div");
+    schemaExample(group, from, from.rows[pair.from_row], edge.from_columns, source);
+    schemaExample(group, to, to.rows[pair.to_row], edge.to_columns, source);
+  }
+}
+function showStructure() {
+  const edges = proposal.relationships || [];
+  const tables = new Map(proposal.tables.map(table => [table.name, table]));
+  const positions = new Map(proposal.tables.map((table, index) => [
+    table.name, {left: index % 2 ? 324 : 52, y: 55 + Math.floor(index / 2) * 104}
+  ]));
+  node(content, "h2", "테이블 관계도");
+  node(content, "p", "표나 연결선을 선택하면 설계 이유와 원본 예시를 볼 수 있습니다.", "muted");
+  const scroll = node(content, "div", undefined, "schema-scroll");
+  scroll.tabIndex = 0;
+  scroll.setAttribute("role", "region");
+  scroll.setAttribute("aria-label", "제안한 표와 관계");
+  const stage = node(scroll, "div", undefined, "schema-stage");
+  const height = Math.ceil(tables.size / 2) * 104 + 6;
+  stage.style.height = height + "px";
+  const svg = schemaElement(stage, "svg", {viewBox:`0 0 540 ${height}`, preserveAspectRatio:"none", "aria-hidden":"true"});
+  const marker = schemaElement(schemaElement(svg, "defs", {}), "marker", {
+    id:"schema-arrow", markerWidth:6, markerHeight:6, refX:5, refY:3, orient:"auto"
+  });
+  schemaElement(marker, "path", {d:"M 0 0 L 6 3 L 0 6 Z", fill:"#647d99"});
+  const selections = [];
+  function syncSelection() {
+    for (const {key, button, line} of selections) {
+      button.setAttribute("aria-pressed", String(structureSelection === key));
+      if (line) line.classList.toggle("selected", structureSelection === key);
+    }
+    showStructureDetail(tables);
+  }
+  function select(key) {
+    structureSelection = key;
+    syncSelection();
+    focusEvidence(byId("evidence"));
+  }
+  for (const [name, table] of tables) {
+    const position = positions.get(name);
+    const button = node(stage, "button", undefined, "schema-table");
+    button.style.left = position.left / 5.4 + "%";
+    button.style.width = 164 / 5.4 + "%";
+    button.style.top = (position.y - 32) + "px";
+    button.title = table.label + " · " + table.row_meaning;
+    node(button, "strong", table.label);
+    node(button, "small", table.row_meaning);
+    button.onclick = () => select(name);
+    selections.push({key:name, button});
+  }
+  if (edges.length) {
+    node(content, "h3", "표 사이 연결");
+    const list = node(content, "ul", undefined, "schema-list");
+    edges.forEach((edge, index) => {
+      const path = relationPath(positions.get(edge.from_table), positions.get(edge.to_table), index);
+      const line = schemaElement(svg, "g", {class:"schema-edge-pair"});
+      schemaElement(line, "path", {d:path, class:"schema-edge", "marker-end":"url(#schema-arrow)"});
+      const hit = schemaElement(line, "path", {d:path, class:"schema-edge-hit"});
+      hit.addEventListener("click", () => select(index));
+      const from = tables.get(edge.from_table);
+      const to = tables.get(edge.to_table);
+      const button = node(node(list, "li"), "button", undefined, "schema-link");
+      node(button, "strong", from.label + " → " + to.label);
+      node(button, "small", " · " + keyLabel(from, edge.from_columns) + " → " + keyLabel(to, edge.to_columns));
+      button.onclick = () => select(index);
+      selections.push({key:index, button, line});
+    });
+  } else {
+    node(content, "p", proposal.relationships ? "제안한 연결 관계가 없습니다." :
+         "이전 실행에는 관계도에 표시할 연결 정보가 없습니다. 새로 분석하면 연결을 검토할 수 있습니다.", "muted");
+  }
+  syncSelection();
+}
 function render() {
   content.replaceChildren();
   counts();
   byId("filters").hidden = view !== "headers";
   byId("filters").style.display = view === "headers" ? "" : "none";
+  if (view === "structure") {
+    showStructure();
+    return;
+  }
   if (view === "purposes") {
     for (const table of proposal.tables) {
       for (const purpose of table.purposes || []) {
@@ -270,6 +443,10 @@ function render() {
 }
 for (const button of document.querySelectorAll("[data-view]")) button.onclick = () => {
   view = button.dataset.view;
+  const panel = byId("evidence");
+  panel.replaceChildren();
+  node(panel, "h2", "원본 근거");
+  node(panel, "p", "적용값을 누르면 원본 위치와 값을 볼 수 있습니다.", "muted");
   for (const tab of document.querySelectorAll("[data-view]")) tab.setAttribute("aria-current", String(tab === button));
   render();
 };

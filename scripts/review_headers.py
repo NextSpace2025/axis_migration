@@ -21,6 +21,7 @@ APPROVAL = "approved-schema.json"
 IDENTIFIER = re.compile(r"[a-z][a-z0-9_]{0,62}")
 COVERAGE = {"typed_mapped", "raw_only", "unresolved", "excluded"}
 INLINE = {".pdf", ".png", ".jpg", ".jpeg"}
+SQLITE_TYPES = {"TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC", "ANY"}
 
 PROPOSAL_INSTRUCTIONS = """
 Save header-proposal.json (UTF-8) as structured review data for a human. Use this shape:
@@ -28,6 +29,9 @@ Save header-proposal.json (UTF-8) as structured review data for a human. Use thi
   "files": [{"path": "relative/paper.xlsx", "status": "typed_mapped",
              "detail": "Korean coverage summary of pages/sheets/regions and any gaps"}],
   "tables": [{"name": "order_lines", "label": "발주 품목", "row_meaning": "발주서 품목 한 줄",
+    "reason": "Korean explanation of why this data needs a separate table",
+    "generated_keys": {"id": "INTEGER", "order_id": "INTEGER"},
+    "primary_key": ["id"],
     "purposes": [{"question": "이 발주서에서 품목별로 얼마나 주문했나요?", "headers": [0],
                   "basis": "Located Korean explanation of the relationship and why these headers answer the question",
                   "gaps": []}],
@@ -37,8 +41,21 @@ Save header-proposal.json (UTF-8) as structured review data for a human. Use thi
       "issue": "", "files": ["relative/paper.xlsx"]}],
     "rows": [{"file": "relative/paper.xlsx", "location": "발주서!12행", "page": null,
       "cells": [{"mapping": 0, "location": "발주서!F12", "original": "12.50",
-                 "applied": "12.5"}]}]}]
+                 "applied": "12.5"}]}]}],
+  "relationships": [{"from_table": "order_lines", "from_columns": ["order_id"],
+    "to_table": "orders", "to_columns": ["id"],
+    "reason": "Korean explanation of the relationship and how the originals establish it",
+    "examples": [{"from_row": 0, "to_row": 0}]}]
 }
+The example omits the orders table for brevity; provide every referenced table.
+Include relationships even when empty. Keep these keys and foreign-key endpoints
+consistent with structure.md. Use generated_keys only for key columns not supplied
+by a source mapping. Use [] for a table with no primary key. A relationship points
+from the foreign-key table to the referenced table. For composite keys, give
+ordered column lists. Example indices are 0-based within each endpoint's rows.
+Select actual linked examples where available, including the original cells
+supporting the link when a key is generated. Use [] if no paired example is
+available and describe the missing evidence in reason. Never invent a pair.
 File paths are case-correct relative paths with forward slashes. Include every
 in-scope regular file from the folder, including prior outputs/templates/unsupported
 files marked excluded or unresolved as appropriate. Exclude the private
@@ -108,7 +125,7 @@ def nonempty(item, *keys):
     return all(isinstance(item.get(key), str) and item[key].strip() for key in keys)
 
 
-def check_proposal(proposal, snapshot):
+def check_proposal(proposal, snapshot, *, require_model=False):
     paths = set()
     for item in proposal["files"]:
         if (item["path"] not in snapshot or item["path"] in paths or
@@ -136,7 +153,7 @@ def check_proposal(proposal, snapshot):
         for mapping in mappings:
             if (not valid_name(mapping["column"]) or
                     not nonempty(mapping, "label", "type", "meaning", "source_header", "rule") or
-                    mapping["type"] not in ("TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC", "ANY") or
+                    mapping["type"] not in SQLITE_TYPES or
                     not isinstance(mapping["issue"], str) or not mapping["files"] or
                     not set(mapping["files"]) <= paths):
                 raise ValueError("원본 헤더, 열 이름, 자료형과 출처를 확인하세요.")
@@ -156,6 +173,48 @@ def check_proposal(proposal, snapshot):
                 seen.add(index)
     if not names:
         raise ValueError("검토 가능한 테이블을 찾지 못했습니다.")
+    if require_model or "relationships" in proposal:
+        check_model(proposal)
+
+
+def valid_columns(columns, available):
+    return (isinstance(columns, list) and all(valid_name(name) for name in columns)
+            and len(set(columns)) == len(columns) and set(columns) <= available)
+
+
+def check_model(proposal):
+    available = {}
+    tables = {table["name"]: table for table in proposal["tables"]}
+    for name, table in tables.items():
+        generated = table.get("generated_keys")
+        mapped = {field["column"] for field in table["mappings"]}
+        if (not nonempty(table, "reason") or not isinstance(generated, dict)
+                or any(not valid_name(key) or kind not in SQLITE_TYPES
+                       for key, kind in generated.items()) or mapped & generated.keys()
+                or not valid_columns(table.get("primary_key"), mapped | generated.keys())):
+            raise ValueError(f"표를 나눈 이유와 키를 확인하세요. {name}")
+        available[name] = mapped | generated.keys()
+    relationships = proposal.get("relationships")
+    if not isinstance(relationships, list):
+        raise ValueError("제안한 테이블 관계 목록이 필요합니다.")
+    seen = set()
+    for relationship in relationships:
+        child, parent = relationship["from_table"], relationship["to_table"]
+        source, target = relationship["from_columns"], relationship["to_columns"]
+        if (child not in tables or parent not in tables or not nonempty(relationship, "reason")
+                or not valid_columns(source, available[child]) or not valid_columns(target, available[parent])
+                or not source or len(source) != len(target)):
+            raise ValueError("연결하는 표와 열, 연결 이유를 확인하세요.")
+        key = (child, parent, tuple(source), tuple(target))
+        if key in seen:
+            raise ValueError(f"같은 표 관계가 두 번 제안되었습니다. {child} → {parent}")
+        seen.add(key)
+        examples = relationship.get("examples")
+        if not isinstance(examples, list) or any(
+            type(example[side]) is not int or not 0 <= example[side] < len(tables[table]["rows"])
+            for example in examples for side, table in (("from_row", child), ("to_row", parent))
+        ):
+            raise ValueError(f"표 관계의 원본 예시 위치를 확인하세요. {child} → {parent}")
 
 
 def valid_name(name):
@@ -209,12 +268,49 @@ def proposal_digest(run):
     return hashlib.sha256((run / PROPOSAL).read_bytes()).hexdigest()
 
 
+def approved_model(proposal, tables):
+    if "relationships" not in proposal:
+        return {}
+    names = {}
+    for table in tables:
+        columns = {key: {key} for key in table["generated_keys"]}
+        for field in table["mappings"]:
+            if field["action"] == "use":
+                if field["column"] in table["generated_keys"]:
+                    raise ValueError(f"자동 생성 키와 같은 열 이름입니다. {table['name']}.{field['column']}")
+                columns.setdefault(field["proposed_column"], set()).add(field["column"])
+        names[table["name"]] = columns
+
+    def resolve(table, keys):
+        resolved = []
+        for key in keys:
+            choices = names[table].get(key, set())
+            if len(choices) != 1:
+                raise ValueError(f"키와 관계에 쓰는 열은 한 이름으로 적용해야 합니다. {table}.{key}")
+            resolved.append(next(iter(choices)))
+        if len(set(resolved)) != len(resolved):
+            raise ValueError(f"키와 관계에 쓰는 열을 서로 다른 이름으로 적용하세요. {table}")
+        return resolved
+
+    primary_keys = {table["name"]: resolve(table["name"], table["primary_key"]) for table in tables}
+    relationships = [{
+        **edge,
+        "from_columns": resolve(edge["from_table"], edge["from_columns"]),
+        "to_columns": resolve(edge["to_table"], edge["to_columns"]),
+    } for edge in proposal["relationships"]]
+    resolved = {(edge["from_table"], edge["to_table"], tuple(edge["from_columns"]),
+                 tuple(edge["to_columns"])) for edge in relationships}
+    if len(resolved) != len(relationships):
+        raise ValueError("열 이름을 적용하면 같은 표 관계가 두 번 생깁니다.")
+    return {"primary_keys": primary_keys, "relationships": relationships}
+
+
 @contextmanager
 def review_server(run, source, proposal, snapshot):
     session = "/" + token_urlsafe(24) + "/"
     approval = Event()
     lock = Lock()
-    state = {"message": "헤더 확인 대기", "result": "", "finished": False}
+    state = {"message": "데이터 구조 확인 대기", "result": "", "finished": False}
     digest = proposal_digest(run)
     decisions = initial_decisions(proposal)
     if (run / DRAFT).exists():
@@ -297,6 +393,7 @@ def review_server(run, source, proposal, snapshot):
                 payload = json.loads(self.rfile.read(length))
                 edits = payload["decisions"]
                 tables = decision_tables(proposal, edits, approve=approve)
+                model = approved_model(proposal, tables) if approve else {}
                 with lock:
                     if approval.is_set():
                         return self.respond({"error": "이 구조는 이미 확정했습니다."}, status=409)
@@ -309,7 +406,7 @@ def review_server(run, source, proposal, snapshot):
                     decisions = edits
                     if approve:
                         save_object(run / APPROVAL, {"proposal": digest, "tables": tables,
-                                                     "files": proposal["files"], "decisions": edits})
+                                                      "files": proposal["files"], "decisions": edits, **model})
                         state["message"] = "구조를 확정했습니다. SQLite 변환을 시작합니다."
                         approval.set()
                 return self.respond({"saved": True})
