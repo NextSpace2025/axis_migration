@@ -34,6 +34,7 @@ main{min-width:0;flex:1;padding:32px 36px 64px}main>header{margin-bottom:26px}h2
 .start-note{margin:18px 0}.start-note h3{margin:0 0 5px;font-size:16px}.dashboard-note{padding:9px 0;border-bottom:1px solid #d7dfea}.dashboard-note summary{font-weight:600}.dashboard-note p{padding:8px 0;margin:0}
 .search{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:24px 0}.search label{font-weight:600}.search input{font:inherit;padding:8px 11px;border:1px solid #aab7c8;border-radius:5px;min-width:240px;max-width:100%;caret-color:#194f88}.search button,.button{font:inherit;padding:8px 14px;border:1px solid #8da4bf;border-radius:5px;background:#f2f5f9;color:#173c65;text-decoration:none;cursor:pointer}.search button:hover,.button:hover{background:#e2e9f2}
 .catalog-row{padding:22px 0;border-top:1px solid #d7dfea}.catalog-top{display:flex;align-items:baseline;justify-content:space-between;gap:18px}.count{white-space:nowrap;color:#536176;font-size:13px;font-variant-numeric:tabular-nums}.table-code{color:#536176;font-size:12px;overflow-wrap:anywhere}.catalog-row p{margin:6px 0 10px}.catalog-row details{margin-top:9px}summary{cursor:pointer;color:#194f88;width:fit-content}summary:hover{text-decoration:underline}.guide{background:#f5f7fa;padding:20px 24px;margin:18px 0 24px}.guide h3{margin:0 0 12px;font-size:16px}dl{margin:0}.guide dl,.catalog-row dl{display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px 20px;max-width:1000px}dt{font-weight:600}dd{margin:0;max-width:78ch;overflow-wrap:anywhere}.related a{display:inline-block;margin:0 18px 4px 0}.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:18px 0}
+.relation-list{list-style:none;padding:0}.relation-list li{padding:12px 0;border-bottom:1px solid #d7dfea;overflow-wrap:anywhere}.relation-list a{display:inline-block;padding:3px 8px;background:#edf2f7;border-radius:4px}
 .column-label{display:block;white-space:normal;min-width:90px}.column-unit,.column-source{display:block;font-size:11px;font-weight:400;line-height:1.5;margin-top:4px;color:#536176;white-space:normal;overflow-wrap:anywhere}.column-help{font-size:12px;font-weight:400;display:inline-block;margin-top:5px}.unit-unknown{color:#805500}.column-guide{margin:20px 0}.column-guide>summary{font-weight:600}.column-guide>p{font-size:13px;color:#536176}.column-note{border-top:1px solid #d7dfea;padding:16px 0;scroll-margin-top:16px}.column-note:target{background:#fff6df}.column-note h4{font-size:14px}.column-note h4 small{display:block;font-size:12px;font-weight:400;color:#536176;overflow-wrap:anywhere}.column-note dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:6px 16px}.column-jump{display:inline-block;margin:8px 0}
 table{border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px;width:max-content;min-width:100%}th,td{border-bottom:1px solid #d7dfea;padding:10px 12px;text-align:left;white-space:pre-wrap;vertical-align:top}th{position:sticky;top:0;background:#edf2f7;color:#26354b;font-weight:600;z-index:1}td{min-width:110px;max-width:420px;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#fafbfd}.grid{overflow:auto;max-height:72vh;margin:16px 0;border:1px solid #d7dfea}.pager{display:flex;gap:20px;margin-top:18px}em{color:#6b7280}.empty{padding:24px;background:#f5f7fa}.footer{font-size:12px;color:#536176;border-top:1px solid #d7dfea;margin-top:36px;padding-top:18px}
 @media(max-width:900px){aside{width:205px}main{padding:26px 22px}.guide dl,.catalog-row dl{grid-template-columns:100px minmax(0,1fr)}}
@@ -145,6 +146,14 @@ def make_handler(database, page_size, catalog=None):
             if request.path == '/sql':
                 self.reply('\n'.join(db.iterdump()), 'application/sql', 'export.sql')
                 return
+            view = params.get('view', [''])[0]
+            if request.path == '/' and view == 'source-links' and 'source_files' in catalog:
+                self.source_links(tables, params.get('file', [''])[0],
+                                  params.get('kind', [''])[0], params.get('name', [''])[0])
+                return
+            if request.path == '/' and view == 'table-links':
+                self.table_links(db, tables)
+                return
             if not tables:
                 self.reply('<h1>No tables in this database</h1>', 'text/html')
                 return
@@ -225,9 +234,65 @@ def make_handler(database, page_size, catalog=None):
             content += '<p class="footer">행 수는 각 테이블의 저장 단위입니다. 서로 다른 표의 행 수나 금액을 합쳐 거래 건수·총비용으로 해석하지 마세요. 원문과 데이터베이스는 읽기 전용으로 표시합니다.</p>'
             self.shell(tables, None, content)
 
+        def source_links(self, tables, selected, kind, name):
+            """Browse source contents and inspect documented connections by file."""
+            files = catalog['source_files']
+            edges = {}
+            for edge in catalog.get('source_relationships', []):
+                if name and (edge['kind'] != kind or edge['name'] != name):
+                    continue
+                edges.setdefault(edge['file'], []).append(edge)
+            content = '<h2>파일 구성과 연결 관계</h2><p>파일을 선택하면 원본 내용과 업체·현장 연결 근거를 볼 수 있습니다.</p>'
+            if selected or name:
+                content += '<p><a href="/?view=source-links">전체 파일 보기</a></p>'
+            if name:
+                content += '<h3>' + escape(kind) + ' · ' + escape(name) + '</h3>'
+            for entry in files:
+                path = entry['path']
+                if (selected and selected != path) or (name and path not in edges):
+                    continue
+                links = edges.get(path, [])
+                label = escape(path)
+                content += '<section class="catalog-row"><h4><a href="/?view=source-links&amp;file=' + quote(path, safe='') + '">' + label + '</a></h4>'
+                content += '<p>' + escape(entry['description']) + ' · ' + escape(entry['status']) + '</p>'
+                if selected or name:
+                    content += '<ul class="relation-list">' + ''.join(
+                        '<li>' + label + ' → <a href="/?view=source-links&amp;kind=' +
+                        quote(edge['kind'], safe='') + '&amp;name=' + quote(edge['name'], safe='') +
+                        '">' + escape(edge['kind']) + ' · ' + escape(edge['name']) +
+                        '</a> · ' + ('확인됨' if edge['status'] == 'confirmed' else '확인 필요') +
+                        '<br>' + escape(edge['evidence']) + '</li>' for edge in links
+                    ) + '</ul>' if links else '<p>기록된 업체·현장 연결이 없습니다.</p>'
+                else:
+                    content += '<p>연결 ' + str(len(links)) + '개</p>'
+                content += '</section>'
+            self.shell(tables, None, content)
+
+        def table_links(self, db, tables):
+            """Display real SQLite foreign keys with both column names."""
+            def endpoint(table, column):
+                return ('<a href="/?table=' + quote(table, safe='') + '">' +
+                        escape(table_info(catalog, table).get('title', table)) + '</a> · ' +
+                        escape(column_info(catalog, table, column).get('label', column)))
+
+            links = []
+            for table in tables:
+                groups = {}
+                for key, _, parent, source, target, *_ in db.execute(
+                        'PRAGMA foreign_key_list(' + identifier(table) + ')'):
+                    groups.setdefault(key, []).append(
+                        endpoint(table, source) + ' → ' + endpoint(parent, target or '기본 키'))
+                links.extend('<li>' + '<br>'.join(parts) + '</li>' for parts in groups.values())
+            content = '<h2>테이블 구조 관계</h2><p>연결하는 열에서 참조하는 열로 이어집니다. 표 이름을 누르면 실제 행을 볼 수 있습니다.</p>'
+            content += '<ul class="relation-list">' + ''.join(links) + '</ul>' if links else '<p>DB에 정의된 외래 키가 없습니다.</p>'
+            self.shell(tables, None, content)
+
         def shell(self, tables, selected, content):
             """Keep navigation, descriptions, and data in one local surface."""
             options = '<a class="table-link' + (' active' if selected is None else '') + '" href="/?view=dashboard">대시보드</a>'
+            if 'source_files' in catalog:
+                options += '<a class="table-link" href="/?view=source-links">파일 구성과 연결 관계</a>'
+                options += '<a class="table-link" href="/?view=table-links">테이블 구조 관계</a>'
             for group, names in table_groups(catalog, tables):
                 options += '<h2>' + escape(group) + '</h2>'
                 for name in names:

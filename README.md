@@ -115,6 +115,33 @@ unverified data must remain visibly separate from validated business records.
 
 ## Local workspace and result viewer
 
+With the repository checkout and an authenticated Codex CLI on your PATH, run
+the folder workflow in one command:
+
+```powershell
+python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기준 회사명"
+```
+
+The runner invokes the design and migration skills, saves each successful stage
+in a private run, verifies SQLite and opens a loopback result page. The sidebar
+links to the file inventory and evidence for file–company/site links, and to
+actual SQLite foreign keys. The relationship views use clickable lists. The
+separate 3D renderer is available for graph hosts through the existing
+[integration guide](construction-data-migration/references/graph-view.md).
+
+Use the printed run path with `python scripts/run_folder.py --resume "실행 폴더"`
+to restart at the unfinished stage or reopen a completed result. Append
+`--answer "답변"` when the saved state requests a decision. For a changed source
+scope or reference company, start a new run. `--no-browser` prints the URL
+without opening an external browser. Keep the terminal open while viewing.
+
+This command runs the configured Codex model on source content. Use
+`--local ollama` or `--local lmstudio` with a configured local provider when
+appropriate. File reading depends on the host's available tools. Review the
+saved coverage report for unread or unresolved material. The run retains
+`structure.md`, `data.sqlite`, `export.sql`, `validation.md`, `viewer.json`,
+`status.json`, and reopening instructions. The port is assigned on startup.
+
 Selecting an input folder starts or resumes its private
 `.axis_migration/record.md`. The agent records the company, scope, actual stage,
 classification/model decisions, result links and remaining work, then appends
