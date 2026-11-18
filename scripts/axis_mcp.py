@@ -7,7 +7,8 @@ import sys
 from threading import Lock
 from typing import Any, Literal
 
-from run_folder import new_run, read_object, read_status, resume_context, save_object
+from run_folder import (RESULT_STAGE, REVIEW_STAGE, new_run, read_object, read_status,
+                        resume_context, save_object)
 
 
 RUNNER = Path(__file__).with_name("run_folder.py")
@@ -84,7 +85,7 @@ def close_folder(run_dir: str) -> dict[str, Any]:
         if not job or job.poll() is not None or not (run / "active-view.json").exists():
             raise ValueError("이 MCP 연결에서 열어 둔 검토 또는 결과 화면이 없습니다.")
         status = read_status(run)
-        if status["stage"] not in ("헤더와 적용값 검토", "결과 화면") or status["state"] == "running":
+        if status["stage"] not in (REVIEW_STAGE, RESULT_STAGE) or status["state"] == "running":
             raise ValueError("검토 대기나 결과 표시 중에 화면을 닫을 수 있습니다.")
         save_object(run / "close-view.json", {"pid": job.pid})
     return {"requested": True, "run_dir": str(run)}

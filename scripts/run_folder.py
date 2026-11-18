@@ -26,6 +26,9 @@ from run_status import PACKAGE, read_status, render, write_status
 from view_db import identifier, make_handler
 
 
+REVIEW_STAGE = "데이터 구조 검토"
+RESULT_STAGE = "결과 화면"
+
 DESIGN = """Apply construction-schema-design. Inspect actual source contents, inventory
 every file and page/sheet, and review coverage. Save structure.md with the model,
 coverage and located mappings. If only prior outputs are present, return waiting
@@ -415,7 +418,7 @@ def process(args, source, run, record, prior, metadata):
             save_object(state_path, metadata)
 
         if metadata["stage"] == "review":
-            stage = "데이터 구조 검토"
+            stage = REVIEW_STAGE
             snapshot = metadata["snapshot"]
             if source_snapshot(source) != snapshot:
                 raise ValueError("검토할 원본 범위나 파일이 바뀌었습니다. 새 분석을 시작하세요.")
@@ -466,7 +469,7 @@ def process(args, source, run, record, prior, metadata):
             verified = verify(run)
             metadata["stage"] = "viewer"
             save_object(state_path, metadata)
-        stage = "결과 화면"
+        stage = RESULT_STAGE
         primary, catalog = verified or verify(run, export=status_run == run)
         launcher = ["python", str(Path(__file__).resolve()), "--resume", str(run)]
         command = ("& " + " ".join("'" + arg.replace("'", "''") + "'" for arg in launcher)

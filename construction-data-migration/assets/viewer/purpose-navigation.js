@@ -11,8 +11,8 @@
       for (const p of proposed.purposes) entries.push({table, label:p.question, basis:p.basis,
         headers:p.headers.map(i => proposed.mappings[i].label), gaps:p.gaps,
         files:new Set(p.headers.flatMap(i => proposed.mappings[i].files))});
-    } else if (table.guide.interpretation && table.group !== '출처와 검토') {
-      entries.push({table, label:table.title, basis:table.guide.interpretation,
+    } else if (table.group !== '출처와 검토' && table.columns.length) {
+      entries.push({table, label:table.title, basis:table.guide.interpretation || table.guide.why,
         headers:table.columns.map(c => c.label || c.name), gaps:[table.guide.caution].filter(Boolean)});
     }
   }
@@ -24,6 +24,29 @@
   summary.textContent = '업무별 헤더';
   list.append(summary);
   nav.before(list);
+  const dialog = document.createElement('dialog');
+  dialog.id = 'purpose-headers';
+  dialog.setAttribute('aria-labelledby', 'purpose-headers-title');
+  const style = document.createElement('style');
+  style.textContent = `
+    #purpose-headers {
+      width: min(34rem, calc(100% - 2rem));
+      max-height: 80vh;
+      padding: 1.25rem;
+      box-sizing: border-box;
+      color: var(--text, CanvasText);
+      background: var(--pane, Canvas);
+      border: 1px solid var(--line, GrayText);
+      border-radius: .75rem;
+    }
+    #purpose-headers::backdrop { background: rgb(0 0 0 / .55); }
+    #purpose-headers h2 { margin: .3rem 0 1rem; }
+    #purpose-headers ol { margin: 0 0 1.25rem; padding-inline-start: 2rem; }
+    #purpose-headers li { padding: .45rem .25rem; border-bottom: 1px solid var(--line, GrayText); }
+    #purpose-headers footer { display: flex; justify-content: flex-end; gap: .5rem; }
+  `;
+  document.head.append(style);
+  document.body.append(dialog);
   function button(parent, text, action) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -31,16 +54,37 @@
     b.textContent = text;
     b.onclick = action;
     parent.append(b);
+    return b;
   }
   function show(entry) {
+    dialog.replaceChildren();
+    const title = document.createElement('h2');
+    title.id = 'purpose-headers-title';
+    title.textContent = entry.label + ' · 헤더 구성';
+    const headers = document.createElement('ol');
+    for (const label of entry.headers) {
+      const header = document.createElement('li');
+      header.textContent = label;
+      headers.append(header);
+    }
+    const actions = document.createElement('footer');
+    button(actions, '관련 표 보기', () => {
+      dialog.close();
+      showTable(entry);
+    });
+    const close = button(actions, '닫기', () => dialog.close());
+    dialog.append(title, headers, actions);
+    dialog.showModal();
+    close.focus();
+  }
+  function showTable(entry) {
     viewer.setMode('combined');
     viewer.selectTable(entry.table.name);
     const guide = document.getElementById('table-guide');
     guide.open = true;
     const box = document.getElementById('guide-content');
     const explanation = document.createElement('section');
-    for (const text of [entry.label, entry.basis, entry.table.guide.row_meaning,
-      entry.headers.join(' → '), ...entry.gaps]) {
+    for (const text of [entry.label, entry.basis, entry.table.guide.row_meaning, ...entry.gaps].filter(Boolean)) {
       const p = document.createElement('p');
       p.textContent = text;
       explanation.append(p);
