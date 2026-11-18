@@ -63,6 +63,9 @@ totals alone cannot establish correct OCR or interpretation.
 - Instructions using the [Agent Skills format](https://agentskills.io/specification).
 - Construction-specific quantity interpretation, row roles, source provenance,
   continuation-page evidence, and handling of unknown values.
+- A reusable [local 3D graph renderer and host integration guide](construction-data-migration/references/graph-view.md):
+  matte round points, relationship-based layout, orbit/zoom/selection and SVG
+  fallback. The table viewer alone does not supply a graph host or source dataset.
 - A [starter data model](construction-schema-design/references/design-contract.md)
   and fictional [source documents](construction-data-migration/assets/examples/example-order.txt),
   [SQL](construction-data-migration/assets/examples/example.sqlite.sql),

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Publish the reusable WebGL relationship renderer and component styles:
+  matte round points, edge-driven 3D layout, orbit/pan/zoom, source selection,
+  keyboard/reduced-motion support and SVG fallback. Document the host contract;
+  keep private graph data, integrated company viewers and databases external.
+
 - Persist private run states and result paths with `scripts/run_status.py`;
   read them back for completion, decision/input waiting, and error notices.
   Share this workflow across the three skills without changing business DBs.

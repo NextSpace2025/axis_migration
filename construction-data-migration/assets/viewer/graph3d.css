@@ -1,0 +1,11 @@
+/* Interactive 3D point graph; lines retain existing evidence semantics. */
+#graph-3d,.graph-3d-labels{display:none;position:absolute;inset:0}
+.has-3d #graph{visibility:hidden;pointer-events:none}
+.has-3d #graph-3d{display:block;z-index:1;touch-action:none;cursor:grab;outline-offset:-3px}
+.has-3d .graph-3d-labels{display:block;z-index:2;pointer-events:none}
+.has-3d #graph-3d.dragging{cursor:grabbing}
+.graph-3d-help{position:absolute;z-index:4;top:10px;left:12px;right:98px;margin:0;color:#b2bfd1;font-size:11px;line-height:1.6;pointer-events:none}
+.graph-3d-reset{position:absolute;z-index:4;top:8px;right:10px;font-size:11px;min-height:30px;padding:5px 8px;background:#202938;border:1px solid #3b4659;color:#dce3f0;border-radius:5px}
+.has-3d .graph-key{z-index:4;pointer-events:none}.has-3d .graph-key .dot{border-radius:50%;transform:none;clip-path:none}
+.has-3d .zoom-tools{z-index:5}.has-3d #hover-label{z-index:6;max-width:240px;overflow-wrap:anywhere}.has-3d #graph-empty{z-index:5}
+.has-3d #graph-3d:focus-visible{outline:2px solid #c8baff}
