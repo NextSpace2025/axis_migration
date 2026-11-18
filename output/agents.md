@@ -161,3 +161,30 @@ On delivery, save a private `reopen.md` and verified OS-appropriate "다시 열�
 launcher in the run directory as specified by the reopening workflow. Retain
 the exact database, catalog, landing query and executable configuration, not
 just the temporary URL. Link these artifacts from the folder record and reply.
+
+### Deliver to a designated graph viewer
+
+When the user designates an integrated loopback graph viewer for finished work,
+register the validated run as its own dataset in that viewer. Keep existing
+datasets and databases intact. Save viewer configuration, catalog and graph
+data in private paths. Follow the actual viewer contract to connect the result
+and its source references. A table-only page does not fulfill graph delivery.
+
+Use the user-selected input folder's actual name as the dataset label under
+**자료 범위**. Include the parent folder name when the label needs context
+to distinguish repeated names, for example `2026 / 09월`. Keep dataset keys
+stable so existing review links still work. For legacy data whose source folder
+cannot be verified, retain its existing label.
+
+Before marking delivery complete, open the new dataset in the designated viewer
+and verify the dataset, mapped business table, graph and source evidence for a
+selected relationship. Build the URL from the active port and verified dataset,
+table and view. Add `#edge=...` only if that relationship exists in the new
+dataset and opens correctly. Retain the verified URL and restart instructions
+in the private folder record and reopen guide. If delivery is blocked, record
+the actual status and blocker. Never present an older dataset as the new result.
+
+In the final response, place **그래프에서 검토하기** immediately below the
+model, file inventory and status links, or below the equivalent result links.
+Label any link to an earlier dataset as a reference when the new result is
+still awaiting connection.

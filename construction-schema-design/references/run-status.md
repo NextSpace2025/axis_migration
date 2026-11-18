@@ -59,6 +59,10 @@ result links, remaining findings, and the next action if needed. Link `status.js
 from the folder record together with the result/reopen links. Verify viewer and
 launcher behavior using the reopening workflow before claiming viewer delivery.
 A live URL can be described in the summary; retain reopening files as results.
+When delivery to a designated graph viewer was requested, apply
+[the graph delivery checks](../../output/agents.md#deliver-to-a-designated-graph-viewer)
+before marking that delivery complete. Put the verified graph link immediately
+below the other result links.
 
 If write/show fails, report **상태 기록 오류** and its cause; never claim the new
 state was saved or fall back to a global/package file. Missing/malformed prior
