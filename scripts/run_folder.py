@@ -497,7 +497,8 @@ def process(args, source, run, record, prior, metadata):
             if review_enabled:
                 checked_approval(run, source, metadata["snapshot"])
             instructions = MIGRATION + ("\n\n" + APPROVED_MIGRATION if review_enabled else "")
-            if not agent_stage(run, source, record, metadata, stage, instructions, args.answer,
+            if not agent_stage(run, source, record, metadata, stage, instructions,
+                               args.answer or metadata.get("review_resolution"),
                                ("data.sqlite", "validation.md", "viewer.json")):
                 return 2
             if review_enabled:

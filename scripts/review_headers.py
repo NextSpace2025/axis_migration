@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 import hashlib
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
@@ -306,7 +307,7 @@ def approved_model(proposal, tables):
 
 
 @contextmanager
-def review_server(run, source, proposal, snapshot):
+def review_server(run, source, proposal, snapshot, *, draft_notice=None):
     session = "/" + token_urlsafe(24) + "/"
     approval = Event()
     lock = Lock()
@@ -320,6 +321,9 @@ def review_server(run, source, proposal, snapshot):
             decision_tables(proposal, decisions)
     files = {item["path"] for item in proposal["files"]}
     template = Path(__file__).with_name("review_headers.html").read_text(encoding="utf-8")
+    if draft_notice:
+        template = template.replace("<main>", "<p role=\"status\">" + escape(draft_notice) + "</p><main>", 1)
+        template = template.replace('id="approve"', 'id="approve" hidden', 1)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -384,6 +388,8 @@ def review_server(run, source, proposal, snapshot):
             if self.path not in (session + "draft", session + "approve"):
                 return self.send_error(404)
             approve = self.path.endswith("/approve")
+            if approve and draft_notice:
+                return self.respond({"error": draft_notice}, status=409)
             try:
                 self.connection.settimeout(10)
                 length = int(self.headers.get("Content-Length", "0"))

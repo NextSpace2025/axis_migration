@@ -69,8 +69,11 @@ async function activeRuns() {
   const root = process.env.AXIS_LOCAL_REVIEW_ROOT;
   if (!root || !path.isAbsolute(root)) return [];
   const runs = [];
+  const year = path.basename(path.dirname(root));
   for (const source of await directories(root)) {
     const sourceFolder = path.join(root, source.name);
+    const label = /^\d{4}$/.test(year) && /^\d{1,2}월$/.test(source.name)
+      ? year + ' / ' + source.name : source.name;
     for (const entry of await directories(sourceFolder)) {
       if (!runId.test(entry.name)) continue;
       const folder = path.join(sourceFolder, entry.name);
@@ -78,12 +81,12 @@ async function activeRuns() {
         const status = JSON.parse(await readFile(path.join(folder, 'status.json'), 'utf8'));
         if (status.state === 'completed' && status.checks === 'passed' &&
             status.results?.includes(path.join(folder, 'data.sqlite'))) {
-          runs.push({id:entry.name, label:source.name, folder, result:true});
+          runs.push({id:entry.name, label, folder, result:true});
         } else {
           const view = JSON.parse(await readFile(path.join(folder, 'active-view.json'), 'utf8'));
           const url = loopbackURL(view.url);
           if (/^\/[\w-]{32}\/$/.test(url.pathname) && !url.search) {
-            runs.push({id:entry.name, label:source.name, url, result:false});
+            runs.push({id:entry.name, label, url, result:false});
           }
         }
       } catch {
