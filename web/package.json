@@ -1,0 +1,19 @@
+{
+  "name": "axis-migration-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "import": "node scripts/import.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.6",
+    "pg": "8.23.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}

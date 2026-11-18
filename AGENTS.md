@@ -1,5 +1,12 @@
 # Axis Migration
 
+Use the Axis Migration MCP server as the default entry point for a requested
+local folder migration when it is available. Call `start_folder` with the
+explicit input path, or `resume_folder` with a saved run path, then follow
+`folder_status` and share the local review or result URL. The runner asks Codex
+to read the workflow instructions and load each bundled skill at its stage.
+Use the direct runner when MCP is unavailable or the user requests the CLI.
+
 Read `output/agents.md` before processing an input folder. Use
 `construction-schema-design` to inspect file contents, propose an industry- and
 company-appropriate data model with evidence, then review whether the model can

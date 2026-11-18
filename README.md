@@ -19,7 +19,7 @@ produces traceable business data and a simple local, spreadsheet-like table.
 An open-source project by [Axis Lab](https://github.com/NextSpace2025), supporting
 the path from construction documents to reliable operational data and match_flow.
 
-[One-command install](#install) ·
+[Install Axis Migration MCP](#install) ·
 [Try the examples](#try-it) ·
 [Request an initial data assessment](https://github.com/NextSpace2025/axis_migration/issues/new?title=Initial%20data%20assessment) ·
 [About match_flow](#match_flow)
@@ -113,64 +113,56 @@ header changes preserve earlier data; each value retains its source location.
 Raw OCR text or JSON alone is not a successful migration. Unreadable or
 unverified data must remain visibly separate from validated business records.
 
-## Local workspace and result viewer
+## Run a folder migration with MCP
 
-With the repository checkout and an authenticated Codex CLI on your PATH, run
-the folder workflow in one command:
+After [installing and registering the local server](#install), ask your MCP
+client to migrate a folder. Supply the full input folder path and the reference
+company (the buyer).
 
-```powershell
-python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기준 회사명"
-```
+> Axis Migration으로 D:\자료\거래명세서 폴더를 분석해줘. 기준 회사는 예시건설이야.
+> 구조를 검토할 수 있게 브라우저 주소를 알려줘.
 
-The runner invokes the design skill and opens **관계도** on loopback. Select a
-table or connection to see its design rationale, source examples and original
-locations. Open **헤더 검토** to review the proposed columns by table. Use
-**확인 필요만** to focus on uncertain mappings and
-**근거가 있는 헤더 일괄 적용** to select supported mappings with real examples. Edit
-individual column names to split or combine mappings, or choose **원문 보관**
-to preserve a source field outside the typed table. **적용 미리보기** shows rows
-from the original files. Select a value to see its location, original value and
-applied value. PDFs/images can open beside the preview. Spreadsheet evidence
-shows the sheet/cell and captured value, with a link to open the workbook.
-**폴더 전체 확인** shows the analyzed inventory and its coverage findings.
+1. The client calls `start_folder` with the absolute `input_dir` and the
+   reference `company`, if known. Keep the returned `run_dir` for status and resume.
+2. The runner starts Codex CLI and directs it to read the bundled
+   [schema design skill](construction-schema-design/SKILL.md). The client
+   checks `folder_status` with the `run_dir` and shares the `viewer_url` when
+   the review is ready. Open that URL on the computer running Axis Migration.
 
-Use **검토 저장** to pause and resume. **이 구조로 확정하고 변환** saves
-`approved-schema.json` and starts the migration skill. The runner verifies
-the SQLite database and compares its columns, primary keys and foreign keys
-with the approved structure before opening the loopback result page. The sidebar
-links to the file inventory and evidence for file–company/site links, and to
-actual SQLite foreign keys. The relationship views use clickable lists. The
-separate 3D renderer is available for graph hosts through the existing
-[integration guide](construction-data-migration/references/graph-view.md).
+   Select a table or connection in **관계도** to see the design rationale, source
+   examples and original locations. Open **헤더 검토** to review the proposed
+   columns. Use **확인 필요만** to focus on uncertain mappings and
+   **근거가 있는 헤더 일괄 적용** to select supported mappings with real examples.
+   Edit column names to split or combine mappings, or choose **원문 보관** to
+   preserve a source field outside the typed table. In **적용 미리보기**, select
+   a value to see its location, original value and applied value. PDFs and
+   images can open beside the preview. Spreadsheet evidence shows the sheet,
+   cell, captured value and a link to the workbook. **폴더 전체 확인** shows
+   the analyzed inventory and its coverage findings.
 
-Use the printed run path with `python scripts/run_folder.py --resume "실행 폴더"`
-to restart at the unfinished stage or reopen a completed result. Append
-`--answer "답변"` when the saved state requests a decision. For a changed source
-scope or reference company, start a new run. `--no-browser` prints the URL
-without opening an external browser. Keep the terminal open while viewing.
+3. Use **검토 저장** to save your edits. **이 구조로 확정하고 변환** saves
+   `approved-schema.json`. The runner starts a new Codex stage with the bundled
+   [data migration skill](construction-data-migration/SKILL.md). It verifies the
+   SQLite database and compares its columns, primary keys and foreign keys
+   with the approved structure before opening the loopback result page. The
+   result sidebar links to the file inventory, the evidence for file–company/site
+   links, and the SQLite foreign keys. The separate 3D renderer is available for
+   graph hosts through the [integration guide](construction-data-migration/references/graph-view.md).
+4. Check `folder_status` for completion and the result URL. To close an open
+   review or result server, use `close_folder`. Use `resume_folder` with the same
+   `run_dir` to continue a stopped run or reopen results. Pass `company` or
+   `answer` when the saved state asks for it. For a changed source scope or
+   reference company, start a new run.
 
-This command runs the configured Codex model on source content. Use
-`--local ollama` or `--local lmstudio` with a configured local provider when
-appropriate. File reading depends on the host's available tools. Review the
+The runner uses the configured Codex model on source content. To use a configured
+local provider, pass `local="ollama"` or `local="lmstudio"` to `start_folder`.
+File reading depends on the host's available tools. Review the
 saved coverage report for unread or unresolved material. The run retains
 `structure.md`, `header-proposal.json`, `header-draft.json`,
 `approved-schema.json`, `data.sqlite`, `export.sql`, `validation.md`, `viewer.json`,
 `status.json`, and reopening instructions. The port is assigned on startup.
 
-### Optional local MCP entry point
-
-Install the MCP Python SDK with `python -m pip install "mcp>=1.28,<2"`. Register
-a local stdio server in your MCP client using `python` and the absolute path to
-`scripts/axis_mcp.py` as its argument. Use the Python installation that has the SDK.
-The MCP tools use the same local runner and its configured Codex CLI.
-
-1. Call `start_folder` with an absolute `input_dir` and the reference `company`.
-2. Call `folder_status` with the returned `run_dir` to get the actual stage and
-   the active `viewer_url`. Open the URL on the same computer to review and confirm.
-3. Use `close_folder` to close the review or result server. Use `resume_folder`
-   to continue a stopped run or reopen finished results.
-
-When the SDK is installed, the runner also gives each Codex stage a second,
+The runner also gives each Codex stage a second,
 read-only stdio server, `scripts/axis_tools.py`, bound to that one run. Its
 `verify_db` tool applies the final SQLite, viewer and approved-schema checks so
 the stage can fix problems before it reports ready. It cannot start or control
@@ -184,20 +176,22 @@ This metadata folder is excluded from source discovery; business reports and
 exports keep the separate output location below. See the
 [folder record guide](construction-schema-design/references/folder-record.md).
 
-The skill installer below installs the skill directories. To also use the
-viewer, package updater and output instructions, clone this repository:
-
-```sh
-git clone https://github.com/NextSpace2025/axis_migration.git
-cd axis_migration
-```
-
-Ask the agent to read `AGENTS.md` and `output/agents.md`, inspect your selected
-files, propose a model with actual source rows, and review the requested scope's
-coverage. Once the model is defined, requested migration populates a fresh local
-database. Output goes to the source folder's parent:
+The runner creates a fresh local database under
 `INPUT.parent/output/INPUT.name/RUN_ID/`. Company configuration and data stay
 outside this public repository.
+
+### Direct CLI and standalone viewer
+
+For terminal use, the same runner supports starting and resuming directly:
+
+```powershell
+python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기준 회사명"
+python scripts/run_folder.py --resume "실행 폴더"
+```
+
+Append `--answer "답변"` when resuming a run that requests a decision. Use
+`--no-browser` to print the URL and open it yourself. Keep the terminal open
+while viewing. You can also open an existing SQLite file directly:
 
 ```sh
 python3 scripts/view_db.py /absolute/path/to/data.sqlite
@@ -216,9 +210,8 @@ Keep company catalogs outside this repository. Original database fields, values,
 and CSV/SQL export names remain unchanged; missing units are not inferred.
 See the [2026-11-17 work log](docs/2026-11-17.md) for catalog fields and validation.
 
-To return to earlier work, ask: "이 입력 폴더의 지난 결과 화면 다시 열어줘"
-and supply the input folder or result location. The agent uses the private record
-to find the saved run, without converting the sources again. New viewer deliveries
+To return to earlier work, supply the saved run path to `resume_folder`, or use
+the private folder record to find that path. New viewer deliveries
 include a `reopen.md` guide and a verified OS-specific "다시 열기" launcher in
 the result directory. Older runs can have these added when reopened.
 
@@ -251,6 +244,35 @@ Copied global skills are separate: refresh them using the installation command.
 Use a trusted publisher; updates download executable code. Keep backups private.
 
 ## Install
+
+### Axis Migration MCP
+
+Use Git, Python 3.10+, and an authenticated Codex CLI on the same computer as
+the source folder and browser. Run these commands in PowerShell:
+
+```powershell
+git clone https://github.com/NextSpace2025/axis_migration.git
+cd axis_migration
+python -m pip install "mcp>=1.28,<2"
+$axisPython = python -c "import sys; print(sys.executable)"
+$axisServer = (Resolve-Path scripts/axis_mcp.py).Path
+codex mcp add axis_migration -- "$axisPython" "$axisServer"
+codex mcp get axis_migration
+```
+
+If you already have a checkout, run from its root and skip the clone. For
+another MCP client, register a local stdio server using the same Python
+executable as the command and the absolute path to `scripts/axis_mcp.py` as its
+only argument. Start a new client session and confirm the four tools are
+available: `start_folder`, `folder_status`, `resume_folder`, and `close_folder`.
+
+The MCP workflow uses the skills bundled in the checkout. See
+[Run a folder migration with MCP](#run-a-folder-migration-with-mcp) to start.
+
+### Standalone skill installation
+
+Install the skills separately when you want to invoke them directly in an
+agent session.
 
 Requires **Node.js 22.20+**, npm/npx, Git, and access to npm and GitHub.
 Installation uses the [Vercel Labs skills CLI](https://github.com/vercel-labs/skills)

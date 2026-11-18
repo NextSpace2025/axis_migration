@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make the local MCP server the default entry point for folder migration and
+  document installation, status checks, browser review, and resume.
+
 - Give each Codex stage a read-only `scripts/axis_tools.py` MCP server bound to
   its run, with `verify_db` applying the final checks before the stage reports
   ready. The runner still repeats the verification and owns run control.

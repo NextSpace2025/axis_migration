@@ -27,6 +27,7 @@ class WorkflowTests(unittest.TestCase):
             def agent(prompt, run, metadata):
                 called.append(metadata["stage"])
                 if metadata["stage"] == "design":
+                    self.assertIn("construction-schema-design/SKILL.md", prompt)
                     (run / "structure.md").write_text("Example contract", encoding="utf-8")
                     workflow.save_object(run / workflow.PROPOSAL, {
                         "files": [{"path": "example.txt", "status": "typed_mapped", "detail": "Line 1"}],
@@ -65,6 +66,7 @@ class WorkflowTests(unittest.TestCase):
                         }],
                     })
                 elif len(called) == 2:
+                    self.assertIn("construction-data-migration/SKILL.md", prompt)
                     self.assertIn("approved-schema.json", prompt)
                     approval = workflow.read_object(run / workflow.APPROVAL)
                     self.assertEqual(approval["tables"][0]["mappings"][0]["column"], "vendor")
