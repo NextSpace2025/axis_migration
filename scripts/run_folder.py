@@ -28,6 +28,7 @@ from view_db import identifier, make_handler
 
 REVIEW_STAGE = "데이터 구조 검토"
 RESULT_STAGE = "결과 화면"
+VERIFY_STAGE = "확정한 구조와 SQLite 결과 확인"
 
 DESIGN = """Apply construction-schema-design. Inspect actual source contents, inventory
 every file and page/sheet, and review coverage. Save structure.md with the model,
@@ -65,6 +66,17 @@ outside the typed mapping. Preview rows are evidence, not a replacement for
 conversion of the full requested scope. Never modify the proposal, decisions
 or approval. Reflect review changes and their actual coverage in validation.md.
 Return waiting if the model needs further changes; never silently change it."""
+
+
+def run_name():
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
+
+
+def require_files(run, names, message):
+    for name in names:
+        path = run / name
+        if not path.is_file() or path.is_symlink() or not path.stat().st_size:
+            raise ValueError(f"{message} {name}")
 
 
 def run_agent(prompt, run, metadata):
@@ -143,10 +155,7 @@ def verify_model(db, approved):
 
 
 def verify(run, *, export=True):
-    for name in ("structure.md", "validation.md", "data.sqlite"):
-        path = run / name
-        if not path.is_file() or path.is_symlink() or not path.stat().st_size:
-            raise ValueError(f"필수 결과가 없습니다. {name}")
+    require_files(run, ("structure.md", "validation.md", "data.sqlite"), "필수 결과가 없습니다.")
     config = read_object(run / "viewer.json")
     files = config["files"]
     relationships = config["relationships"]
@@ -247,8 +256,7 @@ def check_location(source, run):
 
 
 def new_run(source):
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run = (source.parent / "output" / source.name).resolve() / f"{stamp}-{uuid4().hex[:6]}"
+    run = (source.parent / "output" / source.name).resolve() / run_name()
     check_location(source, run)
     run.mkdir(parents=True)
     save_object(run / "workflow.json", {"source": str(source), "company": None,
@@ -339,15 +347,16 @@ Run context: {json.dumps(dict(source=str(source), reference_company=metadata['co
                    pending=[result["reason"] or "자료 검토 필요"],
                    next_action="답변을 확인한 후 --resume 결과폴더 --answer 답변으로 재개합니다.")
         return False
-    for name in required:
-        path = run / name
-        if not path.is_file() or path.is_symlink() or not path.stat().st_size:
-            raise ValueError(f"분석 단계가 필요한 결과 파일을 만들지 못했습니다. {name}")
+    require_files(run, required, "분석 단계가 필요한 결과 파일을 만들지 못했습니다.")
     return True
 
 
-def open_link(run, url, no_browser):
+def mark_view(run, url):
     save_object(run / "active-view.json", {"url": url, "pid": os.getpid()})
+
+
+def open_link(run, url, no_browser):
+    mark_view(run, url)
     print(url, flush=True)
     if not no_browser:
         webbrowser.open(url)
@@ -399,8 +408,7 @@ def process(args, source, run, record, prior, metadata):
             record_entry(record, "- Decision supplied for this stage: " + args.answer)
         if metadata["stage"] == "viewer" and (run / "status.json").is_file():
             if read_status(run)["state"] == "completed":
-                status_run = run.parent / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                                           + "-" + uuid4().hex[:6])
+                status_run = run.parent / run_name()
                 status_run.mkdir()
                 record_entry(record, f"- Reopen status: {status_run / 'status.json'}")
         if metadata["stage"] == "design":
@@ -465,7 +473,7 @@ def process(args, source, run, record, prior, metadata):
                 return 2
             if review_enabled:
                 checked_approval(run, source, metadata["snapshot"])
-            stage = "확정한 구조와 SQLite 결과 확인"
+            stage = VERIFY_STAGE
             verified = verify(run)
             metadata["stage"] = "viewer"
             save_object(state_path, metadata)
@@ -484,7 +492,7 @@ def process(args, source, run, record, prior, metadata):
                 results.extend([PROPOSAL, APPROVAL])
             checkpoint(status_run, "completed", stage, "SQLite 검증과 결과 화면 접속을 확인했습니다.",
                        checks="passed", results=[run / name for name in results])
-            save_object(run / "active-view.json", {"url": url, "pid": os.getpid()})
+            mark_view(run, url)
             if update_review:
                 update_review("SQLite 검증을 마쳤습니다.", result=url, finished=True)
 
@@ -492,7 +500,7 @@ def process(args, source, run, record, prior, metadata):
     except (OSError, ValueError, TypeError, KeyError, sqlite3.Error, subprocess.SubprocessError) as error:
         record_entry(record, f"- Error at {stage}: {error}")
         checkpoint(status_run, "error", stage, "작업 중 오류가 발생했습니다.", error=str(error),
-                   checks="failed" if stage == "확정한 구조와 SQLite 결과 확인" else "not_run",
+                   checks="failed" if stage == VERIFY_STAGE else "not_run",
                    next_action="오류 원인을 확인한 후 --resume 결과폴더로 재개합니다.")
         return 1
     finally:

@@ -23,6 +23,10 @@ def absolute_path(value):
     return path.resolve(strict=True)
 
 
+def run_path(run_dir):
+    return resume_context(absolute_path(run_dir))[0]
+
+
 def launch(run, company=None, answer=None, local=None):
     command = [sys.executable, "-u", str(RUNNER), "--resume", str(run), "--no-browser"]
     for option, value in (("--company", company), ("--answer", answer), ("--local", local)):
@@ -50,13 +54,13 @@ def start_folder(input_dir: str, company: str | None = None,
 
 def resume_folder(run_dir: str, company: str | None = None, answer: str | None = None) -> dict[str, Any]:
     """Resume a stopped local run with an optional answer, or reopen finished results."""
-    run, _ = resume_context(absolute_path(run_dir))
+    run = run_path(run_dir)
     return launch(run, company=company, answer=answer)
 
 
 def folder_status(run_dir: str) -> dict[str, Any]:
     """Read a local run's persisted status and return its active review or results URL."""
-    run, _ = resume_context(absolute_path(run_dir))
+    run = run_path(run_dir)
     with job_lock:
         job = jobs.get(run)
         exit_code = job.poll() if job else None
@@ -79,7 +83,7 @@ def folder_status(run_dir: str) -> dict[str, Any]:
 
 def close_folder(run_dir: str) -> dict[str, Any]:
     """Close this MCP session's open browser review or result. Keep the saved run for resuming."""
-    run, _ = resume_context(absolute_path(run_dir))
+    run = run_path(run_dir)
     with job_lock:
         job = jobs.get(run)
         if not job or job.poll() is not None or not (run / "active-view.json").exists():
