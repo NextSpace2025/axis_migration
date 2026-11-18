@@ -282,6 +282,28 @@ decimals as canonical text; other targets need their own types and execution
 checks. The [export contract](construction-data-migration/references/export-contract.md)
 defines CSV null/backslash encoding and SQL safety boundaries.
 
+## Task status and final notice
+
+All three skills record the actual stage/state in a private run's `status.json`
+and append state events to `run.jsonl`. They read it before delivering an
+**Axis · 완료 / 확인 대기 / 오류 · 단계** notice with result links and next steps.
+Completed stages may retain nonblocking findings; unperformed or failed required
+checks cannot be labelled complete. Design completion does not imply conversion.
+Interrupted work remains `running`.
+
+Use an existing absolute run directory outside this package, as defined by
+[the output workflow](output/agents.md):
+
+```sh
+python3 scripts/run_status.py write --run /absolute/private/run --state running --stage "모델 검토" --summary "자료 포함 여부를 검토합니다." --checks not_run
+python3 scripts/run_status.py show --run /absolute/private/run
+```
+
+The [status guide](construction-schema-design/references/run-status.md) describes
+completion, waiting/error commands and result paths. `show --json` reads JSON.
+The active skill invokes this helper; it is not an OS shutdown hook. It never
+modifies business DBs or automatically marks historical runs complete.
+
 ## Verify and build a public release
 
 Python 3.10+ is sufficient; the shipped tests and packager use only the standard

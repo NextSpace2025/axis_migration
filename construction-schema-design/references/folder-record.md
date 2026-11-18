@@ -41,6 +41,7 @@ checkpoint should identify the current state without deleting previous entries:
 - Results: <actual report/run locations, or none created>
 - Reopen: <guide/launcher paths, database/catalog, landing query and last verified URL, if delivered>
 - Remaining work: <unread scope, unresolved questions and next step>
+- Status: <private status.json path, actual stage/state and required-check outcome>
 ```
 
 On first start, unknown fields remain unknown and unstarted work remains
@@ -70,3 +71,8 @@ Preserve each run's reopening links and append any corrected paths or new URL.
 
 The agent performs these file operations using its available tools; the skill
 is not an operating-system hook or a background recording service.
+
+Follow [run status and final notice](run-status.md) to save/read the current
+machine-readable state alongside this narrative. Missing state or an unfinished
+start entry never establishes completion. Link status and results at checkpoints
+and handoff; keep these records outside the public package.

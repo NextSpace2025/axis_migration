@@ -31,6 +31,13 @@ Use `scripts/view_db.py` to show the resulting tables on loopback only.
 The local page and database require no hosted services. If the agent itself
 uses a remote model, that is not a guarantee of fully offline document inference.
 
+For design, conversion, matching and viewer tasks, follow
+`construction-schema-design/references/run-status.md`. Use `scripts/run_status.py`
+to save the actual stage/state and result paths in private `status.json`, then
+read it before the final notice. Distinguish completion, waiting for a decision
+or input, and execution errors. Never infer completion from raw extraction,
+an old successful run, or a still-running viewer.
+
 ## Requested updates
 
 When asked to update Axis Migration, read the README version-update workflow.

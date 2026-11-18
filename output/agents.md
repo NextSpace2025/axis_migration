@@ -118,6 +118,14 @@ prior generated outputs from input discovery unless the user requests them.
 
 ## Run contents
 
+Follow the [run status guide](../construction-schema-design/references/run-status.md)
+at start, checkpoints and delivery. Save `status.json` with actual stage, state,
+result paths, required-check outcome, blockers/findings and next action using
+`scripts/run_status.py`; writes append events to `run.jsonl`. Read it back before
+ending, link it from the folder record, and distinguish 완료·확인 대기·오류.
+Interrupted `running` is incomplete. Keep status files private; raw content and
+unperformed required checks do not establish completion.
+
 - `structure.md`: model evidence, inventory, capability limits, coverage review,
   version/decision basis, schema, mappings, sample rows, and any target comparison.
 - `data.sqlite`: for a requested local migration, a new database containing

@@ -20,6 +20,11 @@ or workflows need their own evidenced concepts, quantities and row meanings.
 
 ## Start or resume the folder record
 
+Follow [run status and final notice](references/run-status.md): persist the actual
+stage and result paths at start, checkpoints, errors and handoff. Read them back
+before the final notice; distinguish completed design, confirmation/input waiting
+and execution errors. A design notice never implies conversion.
+
 When an input folder is explicitly selected, read or create
 `INPUT/.axis_migration/record.md` and append the invocation before source analysis,
 following the [folder record guide](references/folder-record.md). Include UTC time,
@@ -47,8 +52,9 @@ In Axis Migration, read `../output/agents.md` when available. Inspect the
 explicitly selected input folder first; never substitute the agent's working
 directory. For file output, put the structure and contract in
 `INPUT.parent/output/INPUT.name/RUN_ID/structure.md`, never into the source tree.
-Use the same unique run directory for the migration handoff. An inline
-design-only proposal does not require creating a run directory.
+Use the same unique run directory for the migration handoff. An inline design-only
+proposal for a selected folder also uses a private run directory to retain its
+report and status; it does not require conversion.
 
 ## Propose a model from the contents
 

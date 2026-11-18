@@ -21,6 +21,12 @@ other industries or workflows require their own evidenced domain contract.
 
 ## Start or resume the folder record
 
+Follow [run status and final notice](../construction-schema-design/references/run-status.md)
+at start, checkpoints, errors and delivery. Persist the actual stage/results and
+read the saved status before the final notice. Partial extraction is not a
+completed migration. For reopening, report viewer delivery separately from the
+original conversion state; preserve the original run's completion record.
+
 For an explicitly selected input folder, first read or create
 `INPUT/.axis_migration/record.md`, then append a UTC-timestamped invocation entry.
 Record skill, scope, reference company (unknown until supplied), actual stage,

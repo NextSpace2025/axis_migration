@@ -21,6 +21,12 @@ for construction-specific situations.
 
 ## Start or resume the folder record
 
+Follow [run status and final notice](../construction-schema-design/references/run-status.md)
+at start, checkpoints, errors and handoff. Persist actual progress/result paths
+and read them back before the final notice. Ordinary unmatched or unbilled items
+are findings; use waiting only when a decision/input blocks the requested work,
+and error for execution or blocking verification failures.
+
 For an explicitly selected input folder, read or create
 `INPUT/.axis_migration/record.md` before source analysis and append a UTC entry
 with skill, scope, reference company, actual stage, user decisions, model/

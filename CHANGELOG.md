@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist private run states and result paths with `scripts/run_status.py`;
+  read them back for completion, decision/input waiting, and error notices.
+  Share this workflow across the three skills without changing business DBs.
+
 - Add a read-only dashboard with grouped Korean table names, row counts,
   explanation search, table grain/interpretation/cautions, and related links.
 - Add per-table Korean column labels, field meanings, unit evidence and
