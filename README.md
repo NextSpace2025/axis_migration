@@ -170,6 +170,12 @@ The MCP tools use the same local runner and its configured Codex CLI.
 3. Use `close_folder` to close the review or result server. Use `resume_folder`
    to continue a stopped run or reopen finished results.
 
+When the SDK is installed, the runner also gives each Codex stage a second,
+read-only stdio server, `scripts/axis_tools.py`, bound to that one run. Its
+`verify_db` tool applies the final SQLite, viewer and approved-schema checks so
+the stage can fix problems before it reports ready. It cannot start or control
+runs, and the runner still repeats the same verification itself.
+
 Selecting an input folder starts or resumes its private
 `.axis_migration/record.md`. The agent records the company, scope, actual stage,
 classification/model decisions, result links and remaining work, then appends

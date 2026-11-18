@@ -5,6 +5,7 @@ import argparse
 from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
+from importlib.util import find_spec
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,8 @@ Write viewer.json with these keys:
   relationships: list of objects containing file (one listed relative path),
          kind (업체 or 현장), name, evidence (exact source location and basis),
          status (confirmed or candidate)
+If the axis_tools verify_db tool is available, call it before returning ready
+and fix every problem it reports; the wrapper repeats the same check afterwards.
 Use an empty relationship list if no such links are supported. Include excluded and
 unresolved files in the scope review; never manufacture a link or label it confirmed
 without source support. In a retry, replace only incomplete stage artifacts within
@@ -106,6 +109,10 @@ def run_agent(prompt, run, metadata):
                 "--output-last-message", str(reply)]
     if metadata["local"]:
         command += ["--oss", "--local-provider", metadata["local"]]
+    if find_spec("mcp"):
+        tools = [str(Path(__file__).with_name("axis_tools.py")), "--run", str(run)]
+        command += ["-c", "mcp_servers.axis_tools.command=" + json.dumps(sys.executable),
+                    "-c", "mcp_servers.axis_tools.args=" + json.dumps(tools)]
     subprocess.run([*command, "-"], input=prompt, encoding="utf-8", check=True)
     result = read_object(reply)
     if result.get("state") not in ("ready", "waiting", "error") or not isinstance(result.get("reason"), str):

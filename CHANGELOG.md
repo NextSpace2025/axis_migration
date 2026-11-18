@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Give each Codex stage a read-only `scripts/axis_tools.py` MCP server bound to
+  its run, with `verify_db` applying the final checks before the stage reports
+  ready. The runner still repeats the verification and owns run control.
+
 - Publish the reusable WebGL relationship renderer and component styles:
   matte round points, edge-driven 3D layout, orbit/pan/zoom, source selection,
   keyboard/reduced-motion support and SVG fallback. Document the host contract;
