@@ -122,8 +122,19 @@ the folder workflow in one command:
 python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기준 회사명"
 ```
 
-The runner invokes the design and migration skills, saves each successful stage
-in a private run, verifies SQLite and opens a loopback result page. The sidebar
+The runner invokes the design skill and opens **헤더 검토** on loopback. Review the
+proposed columns by table. Use **확인 필요만** to focus on uncertain mappings and
+**근거가 있는 헤더 일괄 적용** to select supported mappings with real examples. Edit
+individual column names to split or combine mappings, or choose **원문 보관**
+to preserve a source field outside the typed table. **적용 미리보기** shows rows
+from the original files. Select a value to see its location, original value and
+applied value. PDFs/images can open beside the preview. Spreadsheet evidence
+shows the sheet/cell and captured value, with a link to open the workbook.
+**폴더 전체 확인** shows the analyzed inventory and its coverage findings.
+
+Use **검토 저장** to pause and resume. **이 구조로 확정하고 변환** saves
+`approved-schema.json` and starts the migration skill. The runner verifies
+SQLite and the approved columns and opens the loopback result page. The sidebar
 links to the file inventory and evidence for file–company/site links, and to
 actual SQLite foreign keys. The relationship views use clickable lists. The
 separate 3D renderer is available for graph hosts through the existing
@@ -139,7 +150,8 @@ This command runs the configured Codex model on source content. Use
 `--local ollama` or `--local lmstudio` with a configured local provider when
 appropriate. File reading depends on the host's available tools. Review the
 saved coverage report for unread or unresolved material. The run retains
-`structure.md`, `data.sqlite`, `export.sql`, `validation.md`, `viewer.json`,
+`structure.md`, `header-proposal.json`, `header-draft.json`,
+`approved-schema.json`, `data.sqlite`, `export.sql`, `validation.md`, `viewer.json`,
 `status.json`, and reopening instructions. The port is assigned on startup.
 
 Selecting an input folder starts or resumes its private

@@ -2,6 +2,15 @@
 
 ## Required sequence
 
+Derive business questions from located evidence and relationships in each run.
+Amount, material and legal-document review are examples, never a fixed menu.
+For each question show its row grain, the ordered headers needed to answer it,
+why those headers belong together, representative original values and locations,
+and missing evidence under 추가 확인. For legal documents describe the terms
+actually present. A source can support several questions. Reuse the same mapping
+and approval decision wherever a header appears. In the review, link a question
+to its supporting files and a file back to all questions it supports.
+
 1. Inventory the requested files, then inspect actual cells or PDF/image pages,
    including headers, merged groups, units and footnotes. Use the stated purpose
    if available; its absence does not block discovering the records' structure.

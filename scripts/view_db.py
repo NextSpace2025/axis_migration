@@ -66,7 +66,7 @@ def table_groups(catalog, tables):
 def table_guide(catalog, name, tables, heading=True):
     """Explain purpose, grain, safe readings, and limits beside actual rows."""
     info = table_info(catalog, name)
-    if not info:
+    if not info and not any(t['name'] == name for t in catalog.get('purpose_tables', [])):
         return '<p class="muted">이 테이블의 업무 설명은 아직 등록되지 않았습니다. 열 이름만으로 의미를 확정하지 마세요.</p>'
     items = [('생긴 이유', 'why'), ('한 행의 의미', 'row_meaning'),
              ('가능한 해석', 'interpretation'), ('주의할 점', 'caution'), ('설명 근거', 'evidence')]
@@ -77,6 +77,19 @@ def table_guide(catalog, name, tables, heading=True):
                       for other in info.get('related', []) if other in tables)
     if related:
         description += '<dt>함께 볼 표</dt><dd class="related">' + related + '</dd>'
+    for table in catalog.get('purpose_tables', []):
+        if table['name'] != name:
+            continue
+        for purpose in table['purposes']:
+            fields = [table['mappings'][i] for i in purpose['headers']]
+            description += '<dt>' + escape(purpose['question']) + '</dt><dd>' + escape(purpose['basis'])
+            description += '<ol>' + ''.join('<li>' + escape(f['label']) + ' · ' + escape(f['meaning'])
+                + (' · 원문 보관' if f['action'] == 'raw_only' else '') + '</li>' for f in fields) + '</ol>'
+            for gap in purpose['gaps']:
+                description += '<p>추가 확인 · ' + escape(gap) + '</p>'
+            for path in dict.fromkeys(path for field in fields for path in field['files']):
+                description += '<a href="/?view=source-links&amp;file=' + quote(path, safe='') + '">' + escape(path) + '</a> '
+            description += '</dd>'
     return ('<h3>이 테이블을 읽는 방법</h3>' if heading else '') + '<dl>' + description + '</dl>'
 
 
@@ -256,6 +269,10 @@ def make_handler(database, page_size, catalog=None):
                 content += '<section class="catalog-row"><h4><a href="/?view=source-links&amp;file=' + quote(path, safe='') + '">' + label + '</a></h4>'
                 content += '<p>' + escape(entry['description']) + ' · ' + escape(entry['status']) + '</p>'
                 if selected or name:
+                    for table in catalog.get('purpose_tables', []):
+                        for purpose in table['purposes']:
+                            if table['name'] in tables and any(path in table['mappings'][i]['files'] for i in purpose['headers']):
+                                content += '<p><a href="/?table=' + quote(table['name']) + '">' + escape(purpose['question']) + '</a></p>'
                     content += '<ul class="relation-list">' + ''.join(
                         '<li>' + label + ' → <a href="/?view=source-links&amp;kind=' +
                         quote(edge['kind'], safe='') + '&amp;name=' + quote(edge['name'], safe='') +

@@ -60,20 +60,36 @@ is to preserve global 3D context and focus the SVG fallback. The explicit local
 neighborhood control still applies. Graph-to-table filters remain the host's
 responsibility; be clear whether they select related files or exact business rows.
 
+To show both views, provide a positioned `graph-3d-stage` inside `graph-stage`.
+The renderer uses it as its own viewport. The host keeps the SVG visible,
+sizes its viewBox to the SVG panel, and fits both cameras. Both views share
+the original selection state. The host can provide `describeEdge(edge)` to
+show endpoint names, relationship type and evidence status in the 3D tooltip.
+Use the shared evidence panel for the explanation and located sources.
+
 ## Behavior and truth boundaries
 
 Drag rotates, Shift-drag pans, wheel/+/- zooms, arrow keys rotate, and Home or
 the reset button restores orientation. Selection uses the original host actions.
-Reduced-motion disables inertial coasting. If WebGL is missing or its context
+Clicks briefly light up the picked point or the click location. Dragging does
+not trigger the glow. Reduced-motion keeps the glow still and disables
+inertial coasting. If WebGL is missing or its context
 is lost, the existing SVG remains available; the host must provide that fallback.
 
 Small matte round points retain file/company/site colors. Capped size variation
-uses actual relationship counts. Positions use actual edges for attraction,
+uses counts of distinct directly connected nodes. Positions use actual edges for attraction,
 repulsion, and connected-component spacing; isolated sources remain present.
 Position, depth and size do not imply amounts, source accuracy or business rank.
 No new links, identity merges, source readings or database writes occur here.
 Labels are reserved for selection and hover. The renderer uses no remote assets
 or third-party JavaScript libraries.
+
+Integrated hosts with APP_META, integratedView and graphView can load
+`assets/viewer/purpose-navigation.js` after their table controller. Pass the
+approved tables as catalog.purpose_tables, maintaining mapping order and
+source-relative file paths on graph nodes. Verify question → ordered headers →
+source and source → all supported questions. Legacy integrated catalogs can
+display existing table interpretations and link them through actual bound rows.
 
 The integrated local implementation was verified with real Chrome pointer,
 keyboard, zoom, filtering, evidence and WebGL-loss checks. Consumers must verify
