@@ -60,6 +60,35 @@ export function protect(request) {
   });
 }
 
+const operatorCookieName='axis_operator';
+function operatorSignature(expiry,password) {
+  return createHmac('sha256',password).update('axis-operator-session:'+expiry).digest('base64url');
+}
+
+export function operatorLogin(username,password) {
+  const configured=viewerPassword();
+  return !!configured && typeof password==='string' &&
+    timingSafeEqual(digest(password),digest(configured)) && username==='axis';
+}
+
+export function operatorSession(request) {
+  const password=viewerPassword();
+  if (!password) return false;
+  const token=(request.headers.get('cookie')||'').split(';').map(x=>x.trim())
+    .find(x=>x.startsWith(operatorCookieName+'='))?.slice(operatorCookieName.length+1);
+  const match=/^(\d{10})\.([\w-]{43})$/.exec(token||'');
+  return !!match && Number(match[1])>Date.now()/1000 &&
+    timingSafeEqual(digest(match[2]),digest(operatorSignature(match[1],password)));
+}
+
+export function operatorCookie(request,clear=false) {
+  const expiry=String(Math.floor(Date.now()/1000)+sessionSeconds);
+  const value=clear?'':expiry+'.'+operatorSignature(expiry,viewerPassword());
+  const secure=new URL(request.url).protocol==='https:' || process.env.VERCEL==='1';
+  return operatorCookieName+'='+value+'; Path=/; Max-Age='+(clear?0:sessionSeconds)+
+    '; HttpOnly; SameSite=Lax'+(secure?'; Secure':'');
+}
+
 export const privateHeaders = {
   'Cache-Control':'private, no-store',
   'X-Content-Type-Options':'nosniff',

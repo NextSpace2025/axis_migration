@@ -48,3 +48,5 @@ body[data-view=table] .integrated-workspace{grid-template-rows:minmax(0,1fr)}bod
 [data-theme="light"] .has-3d #graph-3d:focus-visible{outline-color:var(--focus)}
 
 .axis-site-link{position:fixed;right:12px;bottom:8px;z-index:20;color:#a9b4ca;font-size:11px;text-decoration:none}.axis-site-link:hover{text-decoration:underline}
+
+.app-header .operator-login{margin-left:auto;white-space:nowrap}

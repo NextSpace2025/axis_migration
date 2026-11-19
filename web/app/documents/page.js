@@ -62,7 +62,7 @@ export default function Documents(){
   const current=topics.find(t=>t.topic===selected);
   return <>
     <link rel="stylesheet" href="/graph.css" precedence="viewer"/><link rel="stylesheet" href="/integrated.css" precedence="viewer"/><link rel="stylesheet" href="/analysis-view.css" precedence="analysis"/>
-    <header className="app-header" dangerouslySetInnerHTML={{__html:headerContents}}/><Script src="/analysis-theme.js"/>
+    <header className="app-header" dangerouslySetInnerHTML={{__html:headerContents}}/><Script src="/analysis-theme.js"/><Script src="/operator-nav.js"/>
     <div className="app-subbar"><span>문서 분석</span>{code&&<span>조회 번호 <strong>{code}</strong></span>}</div>
     <div className="workspace integrated-workspace analysis-workspace">
     <aside className="sidebar app-sidebar"><div className="nav-heading"><h2>자료 범위</h2></div><nav aria-label="분석 작업"><a href="/documents">새 문서 분석</a><a href="/results">저장된 결과 열기</a></nav>

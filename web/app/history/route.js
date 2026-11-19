@@ -1,4 +1,4 @@
-import {protect} from '../../lib/access.js';
+import {operatorSession} from '../../lib/access.js';
 import {query} from '../../lib/db.js';
 import {escape,reply} from '../../lib/replies.js';
 import {entryPage} from '../../lib/viewer-shell.js';
@@ -28,8 +28,9 @@ async function detail(id, file) {
 }
 
 export async function GET(request){
-  const denied=protect(request);
-  if(denied) return denied;
+  if(!operatorSession(request)) {
+    return page('<p>운영자로 로그인하면 파일명, 추출 본문, 조회 번호를 볼 수 있습니다.</p><a class="text-action" href="/login">운영자 로그인</a>');
+  }
   const params=new URL(request.url).searchParams;
   try{
     if(params.has('id')) return await detail(params.get('id'),params.get('file'));
@@ -43,7 +44,7 @@ export async function GET(request){
     let html=rows.length?'<ol>'+rows.slice(0,pageSize).map(row=>'<li><a href="/history?id='+encodeURIComponent(row.id)+'">'+escape(row.files.length?row.files.join(', '):row.label)+'</a><p>조회 번호 '+escape(row.access_code)+' · '+resultLink(row.access_code)+'</p></li>').join('')+'</ol>':'<p>표시할 작업이 없습니다.</p>';
     if(n) html+='<a href="/history?page='+(n-1)+'">이전 페이지</a> ';
     if(rows.length>pageSize) html+='<a href="/history?page='+(n+1)+'">다음 페이지</a>';
-    return page(html);
+    return page(html+'<form action="/login" method="post"><input type="hidden" name="action" value="logout"><button>로그아웃</button></form>');
   }catch(error){
     console.error('History lookup:',error.code||'configuration');
     return page('작업 내역을 불러올 수 없습니다.',503);
