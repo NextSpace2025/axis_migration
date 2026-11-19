@@ -19,9 +19,12 @@ export function GET(request) {
   return operatorSession(request)?redirect('/history'):loginPage();
 }
 export async function POST(request) {
-  if(request.headers.get('origin')!==new URL(request.url).origin ||
+  const origin=request.headers.get('origin');
+  // Native form navigation under no-referrer can serialize its origin as "null".
+  const sameSiteForm=(origin==='null'||origin===null) && request.headers.get('sec-fetch-site')==='same-origin';
+  if((origin!==new URL(request.url).origin && !sameSiteForm) ||
      !request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) {
-    return new Response(null,{status:403,headers:privateHeaders});
+    return reply(entryPage('로그인 요청 확인','<p>운영 사이트의 로그인 화면에서 다시 시도해 주세요.</p><a href="/login">로그인 화면 열기</a>'),'text/html; charset=utf-8',{},403);
   }
   const form=await request.formData();
   if(form.get('action')==='logout') return redirect('/',operatorCookie(request,true));
