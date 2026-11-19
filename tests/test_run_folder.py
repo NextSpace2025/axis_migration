@@ -3,13 +3,14 @@
 import json
 from contextlib import closing
 from pathlib import Path
+import re
 import sqlite3
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -17,6 +18,98 @@ import run_folder as workflow
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_add_documents_to_existing_ledger_and_skip_repeated_bytes_after_reopen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "문서"
+            source.mkdir()
+            original = source / "발주.txt"
+            original.write_text("발주 수량 4", encoding="utf-8")
+            run = workflow.new_run(source)
+            original_snapshot = workflow.source_snapshot(source)
+            metadata = {**workflow.read_object(run / "workflow.json"), "company": "Example",
+                        "stage": "viewer", "snapshot": original_snapshot}
+            workflow.save_object(run / "workflow.json", metadata)
+            workflow.save_object(run / workflow.APPROVAL, {
+                "files": [{"path": original.name}],
+                "tables": [{"name": "lines", "mappings": [
+                    {"column": "quantity", "type": "INTEGER", "action": "use"}]}],
+            })
+            workflow.save_object(run / "viewer.json", {
+                "primary_table": "lines", "catalog": {"tables": {}}, "relationships": [],
+                "files": [{"path": original.name, "status": "typed_mapped", "description": "발주서"}],
+            })
+            workflow.save_object(run / workflow.PROPOSAL, {})
+            for name in ("structure.md", "validation.md"):
+                (run / name).write_text("Checked", encoding="utf-8")
+            with closing(sqlite3.connect(run / "data.sqlite")) as db:
+                db.executescript("CREATE TABLE lines(source TEXT, quantity INTEGER);"
+                                 "INSERT INTO lines VALUES ('발주.txt:1', 4), ('발주.txt:1', 4);")
+            statement = source / "거래명세서.txt"
+            statement.write_text("납품 수량 2", encoding="utf-8")
+            bad = source / "잘못된명세서.txt"
+            bad.write_text("납품 수량 9", encoding="utf-8")
+            later = source / "다음주 명세서.txt"
+            calls = []
+
+            def agent(prompt, batch, _metadata):
+                self.assertIn("construction-data-migration/SKILL.md", prompt)
+                self.assertEqual(workflow.read_object(batch / workflow.APPROVAL),
+                                 workflow.read_object(run / workflow.APPROVAL))
+                (name,) = workflow.read_object(batch / workflow.APPEND_SCOPE)["new_files"]
+                calls.append(name)
+                with closing(sqlite3.connect(batch / "data.sqlite")) as db, db:
+                    if name == bad.name:
+                        db.execute("DELETE FROM lines WHERE rowid = 1")
+                    db.execute("INSERT INTO lines VALUES (?, ?)", (name + ":1", 2))
+                config = workflow.read_object(batch / "viewer.json")
+                config["files"].append({"path": name, "status": "typed_mapped", "description": "거래명세서"})
+                workflow.save_object(batch / "viewer.json", config)
+                (batch / "validation.md").write_text("Checked append", encoding="utf-8")
+                return {"state": "ready", "reason": ""}
+
+            def browser(url):
+                base = url.split("?")[0]
+                with urlopen(url, timeout=5) as response:
+                    self.assertIn('href="/add-documents"', response.read().decode())
+                with urlopen(base + "add-documents", timeout=5) as response:
+                    form = response.read().decode()
+                token = re.search(r'name="token" value="([^"]+)"', form)[1]
+
+                def post(name):
+                    request = Request(base + "add-documents",
+                                      urlencode({"token": token, "file": name}).encode(),
+                                      headers={"Origin": base.rstrip("/")})
+                    with urlopen(request, timeout=8) as response:
+                        return response.read().decode()
+
+                if not calls:
+                    self.assertIn("서류 1개를 장부에 추가했습니다.", post(statement.name))
+                    self.assertIn("이미 반영한 파일 1개", post(statement.name))
+                    self.assertIn("기존 장부의 값 또는 행이 바뀌었습니다.", post(bad.name))
+                    expected = []
+                else:
+                    self.assertIn("이미 반영한 파일 1개", post("이름만 바꾼 명세서.txt"))
+                    self.assertIn("서류 1개를 장부에 추가했습니다.", post(later.name))
+                    expected = ["다음주 명세서.txt:1,2"]
+                with urlopen(base + "csv?table=lines", timeout=5) as response:
+                    rows = response.read().decode("utf-8-sig").splitlines()
+                self.assertEqual(rows, ["source,quantity", "발주.txt:1,4", "발주.txt:1,4", "거래명세서.txt:1,2",
+                                        *expected])
+                raise KeyboardInterrupt
+
+            with patch.object(workflow, "run_agent", side_effect=agent), patch.object(
+                    workflow.webbrowser, "open", side_effect=browser):
+                self.assertEqual(workflow.main(["--resume", str(run)]), 0)
+                duplicate = source / "이름만 바꾼 명세서.txt"
+                duplicate.write_bytes(statement.read_bytes())
+                later.write_text("다음 주 납품 수량 2", encoding="utf-8")
+                self.assertEqual(workflow.main(["--resume", str(run)]), 0)
+            self.assertEqual(calls, [statement.name, bad.name, later.name])
+            current = run.parent / workflow.read_object(run / workflow.LEDGER)["version"]
+            self.assertEqual(workflow.read_status(current)["state"], "completed")
+            with closing(sqlite3.connect(run / "data.sqlite")) as db:
+                self.assertEqual(db.execute("SELECT sum(quantity) FROM lines").fetchone(), (8,))
+
     def test_resume_migration_and_reopen_without_rereading_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "문서"

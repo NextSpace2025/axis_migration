@@ -103,13 +103,11 @@ not a newly bundled OCR engine or automatic file organizer.
 | SQLite table viewing and CSV/SQL downloads | Included local Python tool |
 | Statement arithmetic, cumulative and open-item reconciliation | Included local Python tool (`scripts/reconcile.py`); linking decisions stay with the agent |
 | Versioned package update, backup and rollback | Included explicit update tool |
-| Duplicate-safe incremental ingestion and schema evolution | Skill guidance; reusable engine and end-to-end acceptance tests still planned |
+| Add new documents to an approved local ledger | Included in the folder runner; confirmed mappings and file-content deduplication |
+| Document revisions and schema evolution | Review guidance in the skills |
 | PO/statement matching and reconciliation | Agent skill workflow; links and findings support review, not payment approval |
 | Upload UI, charts and ERP | Outside this release |
 
-The next milestone is a repeatable accumulation workflow: the same source can be
-rerun without duplicate rows; revised documents are distinguished from new ones;
-header changes preserve earlier data; each value retains its source location.
 Raw OCR text or JSON alone is not a successful migration. Unreadable or
 unverified data must remain visibly separate from validated business records.
 
@@ -153,6 +151,17 @@ company (the buyer).
    `run_dir` to continue a stopped run or reopen results. Pass `company` or
    `answer` when the saved state asks for it. For a changed source scope or
    reference company, start a new run.
+
+### Add new statements to the same ledger
+
+Copy the new files into the original source folder, then open **새 서류 추가**
+in the local result viewer. Select the files and click **선택한 서류 추가**.
+The runner uses the previously approved mapping and skips byte-identical files
+even when renamed. The same dashboard and exports show the latest verified
+ledger when reopened with the original `run_dir`. Earlier results are retained
+as snapshots, and a batch that needs further review leaves the ledger unchanged.
+Use the local viewer URL if MCP also returns a hosted lookup URL. For an older
+run, keep the original files available for the first duplicate check.
 
 The runner uses the configured Codex model on source content. To use a configured
 local provider, pass `local="ollama"` or `local="lmstudio"` to `start_folder`.

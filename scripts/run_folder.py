@@ -4,6 +4,7 @@
 import argparse
 from contextlib import ExitStack, closing
 from datetime import datetime, timezone
+from hashlib import sha256
 from http.server import ThreadingHTTPServer
 from importlib.util import find_spec
 import json
@@ -32,6 +33,10 @@ RESULT_STAGE = "결과 화면"
 VERIFY_STAGE = "확정한 구조와 SQLite 결과 확인"
 HOSTED_STAGE = "Supabase 업로드와 운영 조회 확인"
 HOSTED_RESULT = "hosted-result.json"
+APPEND_STAGE = "새 서류 추가"
+LEDGER = "ledger.json"
+APPEND_SCOPE = "append-scope.json"
+DOCUMENT_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".csv", ".tsv", ".txt"}
 
 DESIGN = f"""Read and apply '{(PACKAGE / 'construction-schema-design/SKILL.md').as_posix()}'.
 Inspect actual source contents, inventory every file and page/sheet, and review
@@ -165,7 +170,7 @@ def verify_model(db, approved):
             raise ValueError(f"{message} {child}({', '.join(sources)}) → {parent}({target_label})")
 
 
-def verify(run, *, export=True):
+def verify(run, *, export=True, expected_paths=None):
     require_files(run, ("structure.md", "validation.md", "data.sqlite"), "필수 결과가 없습니다.")
     config = read_object(run / "viewer.json")
     files = config["files"]
@@ -188,7 +193,10 @@ def verify(run, *, export=True):
                         for k in ("name", "evidence"))):
             raise ValueError("자료 연결의 출처, 근거, 상태를 확인하세요.")
     approved = read_object(run / APPROVAL) if (run / APPROVAL).exists() else None
-    if approved and paths != {item["path"] for item in approved["files"]}:
+    if expected_paths is None and approved:
+        expected_paths = (set(read_object(run / APPEND_SCOPE)["files"])
+                          if (run / APPEND_SCOPE).exists() else {item["path"] for item in approved["files"]})
+    if expected_paths is not None and paths != expected_paths:
         raise ValueError("결과 화면의 파일 목록이 검토한 원본 범위와 다릅니다.")
     catalog = config["catalog"]
     primary = config["primary_table"]
@@ -233,8 +241,9 @@ def checkpoint(run, state, stage, summary, **kwargs):
     print(render(read_status(run)), flush=True)
 
 
-def open_result(run, primary, catalog, no_browser, complete):
-    with ThreadingHTTPServer(("127.0.0.1", 0), make_handler(run / "data.sqlite", 50, catalog)) as server:
+def open_result(run, primary, catalog, no_browser, complete, ledger=None):
+    handler = make_handler(run / "data.sqlite", 50, catalog, ledger=ledger)
+    with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         base = f"http://127.0.0.1:{server.server_port}/?"
@@ -324,6 +333,8 @@ def main(argv=None):
         metadata = read_object(run / "workflow.json")
         if Path(metadata["source"]) != source:
             parser.error("기록된 원본 폴더가 바뀌었습니다.")
+        if metadata["stage"] == "append":
+            parser.error(f"장부를 다시 열려면 --resume \"{run.parent / metadata['ledger']}\"를 사용하세요.")
         return process(args, source, run, record, prior, metadata)
 
 
@@ -336,7 +347,8 @@ def saved_company(prior):
     return None
 
 
-def agent_stage(run, source, record, metadata, stage, instructions, answer, required):
+def agent_stage(run, source, record, metadata, stage, instructions, answer, required,
+                *, waiting_action="답변을 확인한 후 --resume 결과폴더 --answer 답변으로 재개합니다."):
     checkpoint(run, "running", stage, stage + " 작업 중입니다.")
     record_entry(record, f"- Stage: {stage}")
     prompt = f"""Read workflow instructions at {PACKAGE / 'output/agents.md'} and
@@ -359,7 +371,7 @@ Run context: {json.dumps(dict(source=str(source), reference_company=metadata['co
         checkpoint(run, "waiting", stage, "검토할 사항이 있습니다.",
                    results=results,
                    pending=[result["reason"] or "자료 검토 필요"],
-                   next_action="답변을 확인한 후 --resume 결과폴더 --answer 답변으로 재개합니다.")
+                   next_action=waiting_action)
         return False
     require_files(run, required, "분석 단계가 필요한 결과 파일을 만들지 못했습니다.")
     return True
@@ -412,6 +424,174 @@ def publish_result(run):
     published = json.loads(result.stdout)
     save_object(run / HOSTED_RESULT, published)
     return published
+
+
+def document_hashes(source, snapshot, names):
+    hashes = {}
+    for name in names:
+        path = source / name
+        if name not in snapshot or path.resolve(strict=True) != path:
+            raise ValueError(f"원본 경로를 확인하세요. {name}")
+        digest = sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        stat = path.stat()
+        if [stat.st_size, stat.st_mtime_ns] != snapshot[name]:
+            raise ValueError(f"읽는 중 파일이 바뀌었습니다. {name}")
+        hashes[name] = digest.hexdigest()
+    return hashes
+
+
+def verify_append(previous, candidate, approved):
+    """Require the same schema and retain every existing row, including repeated rows."""
+    with closing(sqlite3.connect(candidate.as_uri() + "?mode=ro", uri=True)) as db:
+        db.execute("ATTACH DATABASE ? AS previous", (previous.as_uri() + "?mode=ro",))
+        schema = "SELECT type, name, tbl_name, sql FROM {}.sqlite_master WHERE name NOT GLOB 'sqlite_*'"
+        if set(db.execute(schema.format("main"))) != set(db.execute(schema.format("previous"))):
+            raise ValueError("기존 장부의 표 구조가 바뀌었습니다.")
+        changed = set()
+        for (name,) in db.execute("SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"):
+            table = identifier(name)
+            columns = [identifier(column[0]) for column in db.execute(f"SELECT * FROM main.{table} LIMIT 0").description]
+            keys = ", ".join(f"typeof({column}), {column} COLLATE BINARY" for column in columns)
+            # Negating the old counts detects missing occurrences without relying on rowid.
+            combined = (f"SELECT {keys}, count(*) AS delta FROM main.{table} GROUP BY {keys} UNION ALL "
+                        f"SELECT {keys}, -count(*) FROM previous.{table} GROUP BY {keys}")
+            positions = ", ".join(str(i) for i in range(1, len(columns) * 2 + 1))
+            if db.execute(f"SELECT * FROM ({combined}) GROUP BY {positions} HAVING sum(delta) < 0 LIMIT 1").fetchone():
+                raise ValueError(f"기존 장부의 값 또는 행이 바뀌었습니다. {name}")
+            if db.execute(f"SELECT (SELECT count(*) FROM main.{table}) > "
+                          f"(SELECT count(*) FROM previous.{table})").fetchone()[0]:
+                changed.add(name)
+        if not changed.intersection(table["name"] for table in approved["tables"]
+                                    if any(mapping["action"] == "use" for mapping in table["mappings"])):
+            raise ValueError("확정한 업무 표에 추가된 행이 없습니다.")
+
+
+class Ledger:
+    def __init__(self, run, source, record, metadata, primary, catalog):
+        self.run, self.source, self.record = run, source, record
+        self.metadata = metadata
+        self.approved = read_object(run / APPROVAL)
+        self.lock = threading.Lock()
+        self.state = read_object(run / LEDGER) if (run / LEDGER).exists() else {
+            "version": run.name, "hashes": metadata.get("document_hashes")}
+        version = self.state["version"]
+        current = run.parent / version
+        if current.parent != run.parent or current.resolve(strict=True) != current:
+            raise ValueError("장부의 결과 폴더를 확인하세요.")
+        if current != run:
+            if read_object(current / "workflow.json").get("ledger") != run.name:
+                raise ValueError("같은 장부의 결과 폴더를 확인하세요.")
+            primary, catalog = verify(current, export=False, expected_paths=set(self.state["hashes"]))
+        self.current = current, primary, catalog
+
+    def choices(self):
+        known = self.state["hashes"]
+        if known is None:
+            known = {item["path"] for item in self.approved["files"]}
+        return sorted(name for name in source_snapshot(self.source)
+                      if name not in known and Path(name).suffix.lower() in DOCUMENT_EXTENSIONS)
+
+    def add(self, names):
+        if not self.lock.acquire(blocking=False):
+            return "이미 서류를 추가하고 있습니다. 잠시 뒤 장부를 다시 확인하세요."
+        try:
+            return self.append(names)
+        finally:
+            self.lock.release()
+
+    def append(self, names):
+        snapshot = source_snapshot(self.source)
+        known = self.state["hashes"]
+        if known is None:
+            original = self.metadata.get("snapshot", {})
+            if not original or any(snapshot.get(name) != stamp for name, stamp in original.items()):
+                return "기존 장부의 파일을 확인할 수 없습니다. 처음 변환한 원본을 복구한 뒤 다시 시도하세요."
+            known = document_hashes(self.source, snapshot, original)
+            self.state = {**self.state, "hashes": known}
+            save_object(self.run / LEDGER, self.state)
+        if not names or any(name not in snapshot or Path(name).suffix.lower() not in DOCUMENT_EXTENSIONS for name in names):
+            return "원본 폴더에 있는 서류를 선택하세요."
+        selected = document_hashes(self.source, snapshot, dict.fromkeys(names))
+        seen = set(known.values())
+        added = {}
+        duplicates = 0
+        for name, digest in selected.items():
+            if name in known and known[name] != digest:
+                return f"이미 반영한 파일의 내용이 바뀌었습니다. 원본을 확인하세요. {name}"
+            if digest in seen:
+                duplicates += 1
+            else:
+                added[name] = digest
+                seen.add(digest)
+        if not added:
+            return f"이미 반영한 파일 {duplicates}개입니다. 장부의 행 수는 그대로입니다."
+
+        previous, primary, previous_catalog = self.current
+        batch = new_run(self.source)
+        metadata = {**read_object(batch / "workflow.json"), "stage": "append",
+                    "ledger": self.run.name, "company": self.metadata["company"],
+                    "local": self.metadata["local"]}
+        hashes = {**known, **added}
+        scope = {"files": list(hashes), "new_files": list(added)}
+        record_entry(self.record, f"## {datetime.now(timezone.utc).isoformat()} — 새 서류 추가\n"
+                                  f"- Input directory: {self.source}\n- Status: {batch / 'status.json'}")
+        results = ("data.sqlite", "validation.md", "viewer.json")
+        next_action = "새 서류 추가 화면에서 파일과 확인 내용을 검토한 뒤 다시 시도하세요."
+        try:
+            save_object(batch / "workflow.json", metadata)
+            save_object(batch / APPEND_SCOPE, scope)
+            for name in (APPROVAL, "structure.md", "viewer.json"):
+                shutil.copyfile(previous / name, batch / name)
+            previous_db = (previous / "data.sqlite").as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(previous_db, uri=True)) as original, \
+                    closing(sqlite3.connect(batch / "data.sqlite")) as candidate:
+                original.backup(candidate)
+            prompt = f"""Read and apply '{(PACKAGE / 'construction-data-migration/SKILL.md').as_posix()}'.
+This is an append to a private ledger. The staged data.sqlite and viewer.json are
+copies of the current ledger. Keep every existing row and schema declaration.
+Read only the new source paths listed in {APPEND_SCOPE} (new_files, relative to
+the original source directory), inspect their actual contents and check that the
+confirmed mappings in {APPROVAL} fit. Retain the approved file unchanged; the
+scope file is the list of paths for this batch and the cumulative viewer.
+Append only business and provenance rows for the new files, using fresh keys and
+referencing existing entities where appropriate. Keep exact quantities and source
+locations; preserve the catalog, existing file entries and relationships, then add
+entries and located relationships for the new files. Mark each imported file
+typed_mapped in viewer.json. Keep the same primary_table. Write validation.md for
+this batch with per-file row counts, coverage and required checks. Return waiting
+with the reason when any selected file cannot be reliably mapped to the approved
+ledger. The wrapper promotes the copy only after verification."""
+            if not agent_stage(batch, self.source, self.record, metadata, APPEND_STAGE,
+                               prompt, None, results, waiting_action=next_action):
+                return "확인이 필요한 서류가 있습니다. " + read_status(batch)["pending"][0]
+            if (read_object(batch / APPROVAL) != self.approved or read_object(batch / APPEND_SCOPE) != scope
+                    or document_hashes(self.source, source_snapshot(self.source), added) != added):
+                raise ValueError("확정 매핑이나 작업 범위, 원본 파일이 바뀌었습니다.")
+            new_primary, catalog = verify(batch, expected_paths=set(hashes))
+            if new_primary != primary or any(entry["status"] != "typed_mapped" for entry in catalog["source_files"]
+                                             if entry["path"] in added):
+                raise ValueError("선택한 모든 서류가 기존 장부에 반영됐는지 확인할 수 없습니다.")
+            if any(entry not in catalog[key] for key in ("source_files", "source_relationships")
+                   for entry in previous_catalog[key]):
+                raise ValueError("기존 장부의 원본 파일 정보 또는 연결 근거가 바뀌었습니다.")
+            verify_append(previous / "data.sqlite", batch / "data.sqlite", self.approved)
+            state = {"version": batch.name, "hashes": hashes}
+            save_object(self.run / LEDGER, state)
+            self.current = batch, primary, catalog
+            self.state = state
+        except (OSError, ValueError, TypeError, KeyError, sqlite3.Error, subprocess.SubprocessError) as error:
+            checkpoint(batch, "error", APPEND_STAGE, "새 서류를 반영하지 못했습니다.",
+                       checks="failed", error=str(error), next_action=next_action)
+            record_entry(self.record, f"- Error: {error}")
+            return f"새 서류를 반영하지 못했습니다. {error}"
+        checkpoint(batch, "completed", APPEND_STAGE, f"서류 {len(added)}개를 장부에 추가했습니다.",
+                   checks="passed", results=(*results, "export.sql"))
+        record_entry(self.record, f"- Ledger: {self.run}\n- Results: {batch / 'data.sqlite'}")
+        message = read_status(batch)["summary"]
+        return message + (f" 이미 반영한 파일 {duplicates}개는 건너뛰었습니다." if duplicates else "")
 
 
 def process(args, source, run, record, prior, metadata):
@@ -496,6 +676,7 @@ def process(args, source, run, record, prior, metadata):
             stage = "SQLite 변환과 검증"
             if review_enabled:
                 checked_approval(run, source, metadata["snapshot"])
+                original_hashes = document_hashes(source, metadata["snapshot"], metadata["snapshot"])
             instructions = MIGRATION + ("\n\n" + APPROVED_MIGRATION if review_enabled else "")
             if not agent_stage(run, source, record, metadata, stage, instructions,
                                args.answer or metadata.get("review_resolution"),
@@ -503,12 +684,18 @@ def process(args, source, run, record, prior, metadata):
                 return 2
             if review_enabled:
                 checked_approval(run, source, metadata["snapshot"])
+                if document_hashes(source, metadata["snapshot"], metadata["snapshot"]) != original_hashes:
+                    raise ValueError("변환 중 원본 파일 내용이 바뀌었습니다.")
+                metadata["document_hashes"] = original_hashes
             stage = VERIFY_STAGE
             verified = verify(run)
             metadata["stage"] = "viewer"
             save_object(state_path, metadata)
         stage = RESULT_STAGE
         primary, catalog = verified or verify(run, export=status_run == run)
+        ledger = Ledger(run, source, record, metadata, primary, catalog) if (run / APPROVAL).is_file() else None
+        if ledger:
+            _, primary, catalog = ledger.current
         published = None
         if metadata.get("hosted_dataset"):
             stage = HOSTED_STAGE
@@ -538,13 +725,16 @@ def process(args, source, run, record, prior, metadata):
             if published:
                 results.append(HOSTED_RESULT)
             summary = "운영 조회를 확인했습니다. 조회 코드 " + published["code"] if published else "SQLite 검증과 결과 화면 접속을 확인했습니다."
+            if ledger and ledger.current[0] != run:
+                results = [ledger.current[0] / name if name in ("data.sqlite", "export.sql", "validation.md", "viewer.json")
+                           else run / name for name in results]
             checkpoint(status_run, "completed", stage, summary,
                        checks="passed", results=[run / name for name in results])
             mark_view(run, url)
             if update_review:
                 update_review(summary, result=published["viewer_url"] if published else url, finished=True)
 
-        open_result(run, primary, catalog, args.no_browser or bool(update_review), complete)
+        open_result(run, primary, catalog, args.no_browser or bool(update_review), complete, ledger)
     except (OSError, ValueError, TypeError, KeyError, sqlite3.Error, subprocess.SubprocessError) as error:
         record_entry(record, f"- Error at {stage}: {error}")
         checkpoint(status_run, "error", stage, "작업 중 오류가 발생했습니다.", error=str(error),

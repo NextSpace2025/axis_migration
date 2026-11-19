@@ -9,6 +9,7 @@ import sqlite3
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from secrets import token_urlsafe
 from urllib.parse import parse_qs, quote, urlsplit
 
 
@@ -123,9 +124,10 @@ def column_guide(catalog, table, columns, opened=False):
     return result + '</details>'
 
 
-def make_handler(database, page_size, catalog=None):
+def make_handler(database, page_size, catalog=None, *, ledger=None):
     """Bind one trusted database path and pagination configuration."""
     catalog = catalog or {}
+    form_token = token_urlsafe(32) if ledger else None
     class Viewer(BaseHTTPRequestHandler):
         """Serve escaped tables and exports without accepting mutations."""
 
@@ -139,11 +141,64 @@ def make_handler(database, page_size, catalog=None):
                 self.send_error(403, 'Cross-site requests are disabled.')
                 return
             try:
-                with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
+                active = database
+                self.catalog = catalog
+                if ledger:
+                    version, _, self.catalog = ledger.current
+                    active = version / 'data.sqlite'
+                    if self.path == '/add-documents':
+                        self.documents()
+                        return
+                with closing(sqlite3.connect(active.as_uri() + '?mode=ro', uri=True)) as db:
                     db.execute('PRAGMA query_only = ON')
                     self.render(db)
-            except (ValueError, sqlite3.Error):
+            except (OSError, ValueError, sqlite3.Error):
                 self.send_error(400, 'Unable to read this request. Check the table, page, and database.')
+
+        def do_POST(self):
+            if not ledger or self.path != '/add-documents':
+                self.send_error(404)
+                return
+            host = f'127.0.0.1:{self.server.server_port}'
+            if self.headers.get('Host') != host or self.headers.get('Origin') != f'http://{host}':
+                self.send_error(403)
+                return
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1_048_576 or self.headers.get_content_type() != 'application/x-www-form-urlencoded':
+                    raise ValueError('Invalid form')
+                self.connection.settimeout(10)
+                form = parse_qs(self.rfile.read(length).decode('utf-8'))
+            except (OSError, ValueError):
+                self.send_error(400)
+                return
+            if form.get('token') != [form_token]:
+                self.send_error(403)
+                return
+            try:
+                message = ledger.add(form.get('file', []))
+            except (OSError, ValueError, sqlite3.Error) as error:
+                message = f"서류를 추가하는 중 문제가 발생했습니다. {error}"
+            self.catalog = ledger.current[2]
+            self.documents(message)
+
+        def documents(self, message=None):
+            content = ('<header><h2>새 서류 추가</h2><p>처음 자료를 넣은 폴더에 새 거래명세서를 복사한 뒤 아래에서 선택하세요.</p>'
+                       f'<p class="muted">{escape(ledger.source)}</p></header>')
+            if message:
+                content += f'<p role="status">{escape(message)}</p>'
+            choices = ledger.choices()
+            if choices:
+                content += ('<form action="/add-documents" method="post">'
+                            f'<input type="hidden" name="token" value="{form_token}"><fieldset>'
+                            '<legend>추가할 파일</legend>'
+                            + ''.join(f'<p><label><input type="checkbox" name="file" value="{escape(name)}"> '
+                                      f'{escape(name)}</label></p>' for name in choices)
+                            + '</fieldset><p><button type="submit">선택한 서류 추가</button></p></form>')
+            else:
+                content += '<p>추가할 새 서류가 없습니다.</p>'
+            content += '<p><a href="/add-documents">파일 목록 새로고침</a> · <a href="/?view=dashboard">장부 보기</a></p>'
+            self.shell([], None, content)
 
         def render(self, db):
             """Render a table page or serialize the selected export."""
@@ -160,7 +215,7 @@ def make_handler(database, page_size, catalog=None):
                 self.reply('\n'.join(db.iterdump()), 'application/sql', 'export.sql')
                 return
             view = params.get('view', [''])[0]
-            if request.path == '/' and view == 'source-links' and 'source_files' in catalog:
+            if request.path == '/' and view == 'source-links' and 'source_files' in self.catalog:
                 self.source_links(tables, params.get('file', [''])[0],
                                   params.get('kind', [''])[0], params.get('name', [''])[0])
                 return
@@ -174,7 +229,7 @@ def make_handler(database, page_size, catalog=None):
             if page < 0 or page > 1000000:
                 raise ValueError('Invalid page')
             dashboard = request.path == '/' and (params.get('view') == ['dashboard'] or
-                        (catalog and 'table' not in params))
+                        (self.catalog and 'table' not in params))
             if dashboard:
                 self.dashboard(db, tables, params.get('q', [''])[0][:200])
                 return
@@ -192,21 +247,21 @@ def make_handler(database, page_size, catalog=None):
             cursor = db.execute(query + ' LIMIT ? OFFSET ?', (page_size + 1, page * page_size))
             columns = [column[0] for column in cursor.description]
             rows = cursor.fetchall()
-            header = ''.join(column_header(catalog, table, name, index, page) for index, name in enumerate(columns))
+            header = ''.join(column_header(self.catalog, table, name, index, page) for index, name in enumerate(columns))
             body = ''.join('<tr>' + ''.join('<td>' + ('<em>NULL</em>' if value is None else escape(value)) +
                           '</td>' for value in row) + '</tr>' for row in rows[:page_size])
             link = '/?table=' + quote(table, safe='') + '&page='
             navigation = (f'<a href="{link}{page-1}">Previous</a> ' if page else '')
             if len(rows) > page_size:
                 navigation += f'<a href="{link}{page+1}">Next</a>'
-            info = table_info(catalog, table)
+            info = table_info(self.catalog, table)
             title = info.get('title', table)
             description = ('<p class="table-code">' + escape(table) + '</p>') if title != table else ''
             count = db.execute('SELECT COUNT(*) FROM ' + identifier(table)).fetchone()[0]
             empty = '<p class="empty">현재 저장된 행이 없습니다. 이 구조가 있다는 것만으로 원본에 해당 업무가 없다고 판단할 수는 없습니다.</p>' if not count else ''
             content = '<header><h2>' + escape(title) + '</h2>' + description + '<p class="muted">읽기 전용 · ' + f'{count:,}' + '행 · 페이지 ' + str(page+1) + '</p></header>'
-            content += '<section class="guide" aria-label="테이블 설명">' + table_guide(catalog, table, tables) + '</section>'
-            content += column_guide(catalog, table, columns, params.get('columns') == ['open'])
+            content += '<section class="guide" aria-label="테이블 설명">' + table_guide(self.catalog, table, tables) + '</section>'
+            content += column_guide(self.catalog, table, columns, params.get('columns') == ['open'])
             content += '<div class="toolbar"><a class="button" href="/csv?table=' + quote(table, safe='') + '">Download CSV</a><a href="/sql">Download SQL</a><a href="/?view=dashboard">대시보드로 돌아가기</a></div>'
             content += empty + '<div class="grid" id="table-data" tabindex="0" role="region" aria-label="테이블 데이터"><table><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table></div><nav class="pager" aria-label="페이지 이동">' + navigation + '</nav>'
             self.shell(tables, table, content)
@@ -214,16 +269,16 @@ def make_handler(database, page_size, catalog=None):
         def dashboard(self, db, tables, search):
             """Render an explained catalog; row counts never imply transaction totals."""
             counts = {name: db.execute('SELECT COUNT(*) FROM ' + identifier(name)).fetchone()[0] for name in tables}
-            groups = table_groups(catalog, tables)
-            content = '<header><h2>' + escape(catalog.get('title', '자료 대시보드')) + '</h2><p class="intro">' + escape(catalog.get('description', '테이블을 고르기 전에 자료의 의미와 범위를 확인하세요.')) + '</p></header>'
+            groups = table_groups(self.catalog, tables)
+            content = '<header><h2>' + escape(self.catalog.get('title', '자료 대시보드')) + '</h2><p class="intro">' + escape(self.catalog.get('description', '테이블을 고르기 전에 자료의 의미와 범위를 확인하세요.')) + '</p></header>'
             overview = []
-            for item in catalog.get('overview', []):
+            for item in self.catalog.get('overview', []):
                 name = item.get('table')
                 if name in counts:
                     overview.append('<a href="/?table=' + quote(name, safe='') + '"><strong>' + f'{counts[name]:,}' + '</strong>' + escape(item.get('label', name)) + '<span>' + escape(item.get('note', '')) + '</span></a>')
             if overview:
                 content += '<div class="overview" aria-label="현재 자료 범위">' + ''.join(overview) + '</div>'
-            for i, item in enumerate(catalog.get('notices', [])):
+            for i, item in enumerate(self.catalog.get('notices', [])):
                 if i == 0:
                     content += '<section class="start-note"><h3>' + escape(item['title']) + '</h3><p>' + escape(item['text']) + '</p></section>'
                 else:
@@ -232,15 +287,15 @@ def make_handler(database, page_size, catalog=None):
             content += '<form class="search" method="get"><input type="hidden" name="view" value="dashboard"><label for="table-search">테이블 찾기</label><input id="table-search" name="q" value="' + escape(search) + '" placeholder="예: 세금계산서, 검증, 단위"><button type="submit">찾기</button>' + ('<a href="/?view=dashboard">전체 보기</a>' if search else '') + '</form>'
             matches = 0
             for i, (group, names) in enumerate(groups):
-                selected = [name for name in names if not search or search.casefold() in (name + ' ' + ' '.join(str(v) for v in table_info(catalog, name).values())).casefold()]
+                selected = [name for name in names if not search or search.casefold() in (name + ' ' + ' '.join(str(v) for v in table_info(self.catalog, name).values())).casefold()]
                 if not selected:
                     continue
                 content += '<section id="group-' + str(i) + '"><h3>' + escape(group) + '</h3>'
                 for name in selected:
                     matches += 1
-                    info = table_info(catalog, name)
+                    info = table_info(self.catalog, name)
                     column_link = ('<a class="column-jump" href="/?table=' + quote(name, safe='') + '&columns=open#column-guide">컬럼 뜻·단위 ' + str(len(info['columns'])) + '개 보기</a>') if info.get('columns') else ''
-                    content += '<article class="catalog-row"><div class="catalog-top"><div><h4><a href="/?table=' + quote(name, safe='') + '">' + escape(info.get('title', name)) + '</a></h4><span class="table-code">' + escape(name) + '</span></div><span class="count">' + f'{counts[name]:,}' + '행</span></div><p>' + escape(info.get('why', '이 테이블의 업무 설명은 아직 등록되지 않았습니다.')) + '</p><details><summary>한 행의 의미와 해석 보기</summary>' + table_guide(catalog, name, tables, heading=False) + '</details>' + column_link + '</article>'
+                    content += '<article class="catalog-row"><div class="catalog-top"><div><h4><a href="/?table=' + quote(name, safe='') + '">' + escape(info.get('title', name)) + '</a></h4><span class="table-code">' + escape(name) + '</span></div><span class="count">' + f'{counts[name]:,}' + '행</span></div><p>' + escape(info.get('why', '이 테이블의 업무 설명은 아직 등록되지 않았습니다.')) + '</p><details><summary>한 행의 의미와 해석 보기</summary>' + table_guide(self.catalog, name, tables, heading=False) + '</details>' + column_link + '</article>'
                 content += '</section>'
             if not matches:
                 content += '<p class="empty">검색 조건에 맞는 테이블이 없습니다. 다른 단어로 찾거나 전체 보기를 선택하세요.</p>'
@@ -249,9 +304,9 @@ def make_handler(database, page_size, catalog=None):
 
         def source_links(self, tables, selected, kind, name):
             """Browse source contents and inspect documented connections by file."""
-            files = catalog['source_files']
+            files = self.catalog['source_files']
             edges = {}
-            for edge in catalog.get('source_relationships', []):
+            for edge in self.catalog.get('source_relationships', []):
                 if name and (edge['kind'] != kind or edge['name'] != name):
                     continue
                 edges.setdefault(edge['file'], []).append(edge)
@@ -269,7 +324,7 @@ def make_handler(database, page_size, catalog=None):
                 content += '<section class="catalog-row"><h4><a href="/?view=source-links&amp;file=' + quote(path, safe='') + '">' + label + '</a></h4>'
                 content += '<p>' + escape(entry['description']) + ' · ' + escape(entry['status']) + '</p>'
                 if selected or name:
-                    for table in catalog.get('purpose_tables', []):
+                    for table in self.catalog.get('purpose_tables', []):
                         for purpose in table['purposes']:
                             if table['name'] in tables and any(path in table['mappings'][i]['files'] for i in purpose['headers']):
                                 content += '<p><a href="/?table=' + quote(table['name']) + '">' + escape(purpose['question']) + '</a></p>'
@@ -289,8 +344,8 @@ def make_handler(database, page_size, catalog=None):
             """Display real SQLite foreign keys with both column names."""
             def endpoint(table, column):
                 return ('<a href="/?table=' + quote(table, safe='') + '">' +
-                        escape(table_info(catalog, table).get('title', table)) + '</a> · ' +
-                        escape(column_info(catalog, table, column).get('label', column)))
+                        escape(table_info(self.catalog, table).get('title', table)) + '</a> · ' +
+                        escape(column_info(self.catalog, table, column).get('label', column)))
 
             links = []
             for table in tables:
@@ -307,16 +362,18 @@ def make_handler(database, page_size, catalog=None):
         def shell(self, tables, selected, content):
             """Keep navigation, descriptions, and data in one local surface."""
             options = '<a class="table-link' + (' active' if selected is None else '') + '" href="/?view=dashboard">대시보드</a>'
-            if 'source_files' in catalog:
+            if ledger:
+                options += '<a class="table-link" href="/add-documents">새 서류 추가</a>'
+            if 'source_files' in self.catalog:
                 options += '<a class="table-link" href="/?view=source-links">파일 구성과 연결 관계</a>'
                 options += '<a class="table-link" href="/?view=table-links">테이블 구조 관계</a>'
-            for group, names in table_groups(catalog, tables):
+            for group, names in table_groups(self.catalog, tables):
                 options += '<h2>' + escape(group) + '</h2>'
                 for name in names:
-                    title = table_info(catalog, name).get('title', name)
+                    title = table_info(self.catalog, name).get('title', name)
                     label = escape(title) + ('<small>' + escape(name) + '</small>' if title != name else '')
                     options += '<a class="table-link' + (' active' if name == selected else '') + '" href="/?table=' + quote(name, safe='') + '"' + (' aria-current="page"' if name == selected else '') + '>' + label + '</a>'
-            self.reply('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escape(catalog.get('title', 'Axis Migration')) + '</title><style>' + STYLE + '</style></head><body><aside><h1>Axis Migration</h1><nav aria-label="테이블 목록">' + options + '</nav></aside><main>' + content + '</main></body></html>', 'text/html')
+            self.reply('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escape(self.catalog.get('title', 'Axis Migration')) + '</title><style>' + STYLE + '</style></head><body><aside><h1>Axis Migration</h1><nav aria-label="테이블 목록">' + options + '</nav></aside><main>' + content + '</main></body></html>', 'text/html')
 
         def reply(self, content, mime, filename=None):
             """Send private, non-cacheable content with a restrictive browser policy."""
