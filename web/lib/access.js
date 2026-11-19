@@ -62,11 +62,13 @@ export function protect(request) {
 
 const operatorCookieName='axis_operator';
 function operatorSignature(expiry,password) {
-  return createHmac('sha256',password).update('axis-operator-session:'+expiry).digest('base64url');
+  const signer=createHmac('sha256',password).update('axis-operator-session:'+expiry);
+  if(process.env.AXIS_OPERATOR_PASSWORD) signer.update('\0'+process.env.AXIS_OPERATOR_PASSWORD);
+  return signer.digest('base64url');
 }
 
 export function operatorLogin(username,password) {
-  const configured=viewerPassword();
+  const configured=process.env.AXIS_OPERATOR_PASSWORD || viewerPassword();
   return !!configured && typeof password==='string' &&
     timingSafeEqual(digest(password),digest(configured)) && username==='axis';
 }
