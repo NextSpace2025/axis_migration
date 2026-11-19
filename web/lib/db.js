@@ -1,7 +1,7 @@
 import pg from 'pg';
 
 let pool;
-export function query(sql, parameters) {
+function database() {
   if (!pool) {
     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is missing');
     const ca = process.env.DATABASE_CA_PEM;
@@ -19,12 +19,31 @@ export function query(sql, parameters) {
       statement_timeout:15000,
     });
   }
-  return pool.query(sql, parameters);
+  return pool;
+}
+
+export function query(sql, parameters) {
+  return database().query(sql, parameters);
+}
+
+export async function transaction(work) {
+  const client = await database().connect();
+  try {
+    await client.query('begin');
+    const value = await work(client);
+    await client.query('commit');
+    return value;
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function datasets(scope = null) {
+  // Folder uploads reserve run-<32 hex digits> and require a dataset-scoped session.
   return (await query(
-    'select id,label,description,default_table from axis_viewer.datasets where ($1::text is null or id=$1) order by id',
+    `select id,label,description,default_table from axis_viewer.datasets
+      where id=$1 or ($1::text is null and id !~ '^run-[a-f0-9]{32}$') order by id`,
   [scope])).rows;
 }
 

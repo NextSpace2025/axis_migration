@@ -7,8 +7,8 @@
  const canvas=document.createElement('canvas'),labels=document.createElement('canvas');
  canvas.id='graph-3d';canvas.tabIndex=0;canvas.setAttribute('role','application');
  const localResult=window.APP_META?.localResult;
- const reviewing=Boolean(window.AXIS_REVIEW_BASE || localResult);
- const subject=localResult?'변환된 표의':reviewing?'제안한 표의':'파일·업체·현장의';
+ const reviewing=Boolean(window.AXIS_REVIEW_BASE || localResult || api.topicAnalysis);
+ const subject=api.topicAnalysis?'주제별':localResult?'변환된 표의':reviewing?'제안한 표의':'파일·업체·현장의';
  canvas.setAttribute('aria-label',`3차원 ${subject} 관계도. 드래그 또는 방향키로 회전, 더하기와 빼기로 확대·축소, Home으로 회전 초기화. 자료 목록에서도 노드를 선택할 수 있습니다.`);
  labels.className='graph-3d-labels';labels.setAttribute('aria-hidden','true');
  const gl=canvas.getContext('webgl',{antialias:true,alpha:false,preserveDrawingBuffer:true});

@@ -38,7 +38,9 @@ async function openResult(request, code) {
         const query = new URLSearchParams({dataset:result.dataset_id,table:result.landing_table,view:'combined'});
         return new Response(null,{
           status:303,
-          headers:{...privateHeaders,Location:'/?'+query,'Set-Cookie':resultCookie(request,result.dataset_id)},
+          headers:{...privateHeaders,Location:result.landing_table === '__web_topics__'
+            ? '/documents?id='+encodeURIComponent(result.dataset_id) : '/?'+query,
+            'Set-Cookie':resultCookie(request,result.dataset_id)},
         });
       }
       if (result.retry_after) {
@@ -62,10 +64,10 @@ async function openResult(request, code) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>자료 조회 · axis_migration</title><link rel="stylesheet" href="/graph.css">
     <style>body{height:auto;overflow:auto;padding:1.25rem}main{max-width:32rem;margin:3rem auto}
-    label{display:block;margin-bottom:.5rem}input,button{font:inherit;padding:.55rem}</style></head>
-    <body><main><h1>자료 조회</h1>
+    h1{margin:.75rem 0 1rem}label{display:block;margin-bottom:.5rem}input,button{font:inherit;padding:.55rem}</style></head>
+    <body><main><a href="/">뷰어 홈</a><h1>분석 결과 조회</h1>
     <form action="/results" method="post">
-      <label for="code">조회 번호</label>
+      <label for="code">8자리 조회 번호</label>
       <input id="code" name="code" inputmode="numeric" minlength="${RESULT_CODE_LENGTH}"
         maxlength="${RESULT_CODE_LENGTH}" pattern="[0-9]{${RESULT_CODE_LENGTH}}"
         autocomplete="off" value="${valid ? code : ''}" required>

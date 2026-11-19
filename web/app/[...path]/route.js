@@ -74,7 +74,7 @@ export async function GET(request) {
     if (pathname === '/source.html') return await sourcePage(params,available);
     const fallback = available.find(row => row.id === 'september') || available[0];
     const id = params.get('dataset') || fallback?.id;
-    if (access.dataset && id !== access.dataset) return problem('자료 범위를 찾을 수 없습니다.',404);
+    if (!available.some(row => row.id === id)) return problem('자료 범위를 찾을 수 없습니다.',404);
     const current = await dataset(id);
     if (!current) return problem('자료 범위를 찾을 수 없습니다.',404);
     const metadata = await tables(id);

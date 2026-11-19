@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
@@ -11,9 +13,12 @@
     "import": "node scripts/import.mjs"
   },
   "dependencies": {
+    "cfb": "^1.2.2",
+    "fflate": "^0.8.3",
     "next": "16.4.6",
     "pg": "8.23.1",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "saxes": "^6.0.0"
   }
 }

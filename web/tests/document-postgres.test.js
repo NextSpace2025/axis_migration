@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {randomUUID,randomBytes} from 'node:crypto';
+import {GET,POST} from '../app/api/documents/route.js';
+import {GET as lookup} from '../app/results/route.js';
+import {query} from '../lib/db.js';
+
+test('create, retry, reopen, isolate and limit a five-document analysis',{skip:!process.env.AXIS_DISPOSABLE_TEST_DB},async t=>{
+  process.env.DATABASE_URL=process.env.AXIS_DISPOSABLE_TEST_DB;
+  process.env.AXIS_VIEWER_PASSWORD='disposable-fixture-password';
+  process.env.OPENAI_API_KEY='fixture';process.env.AXIS_AI_IP_LIMIT='3';
+  const id='run-'+randomUUID().replaceAll('-',''),token=randomBytes(32).toString('hex');
+  const docs=Array.from({length:5},(_,i)=>({name:'업무'+i+'.docx',passages:Array.from({length:4},(_,j)=>({location:'쪽 '+(j+1),text:'부품 입고가 다음 주로 밀렸다.'}))}));
+  let calls=0,fail=false,empty=false;
+  t.mock.method(globalThis,'fetch',async (url,init)=>{
+    calls++; if(fail)return new Response(null,{status:503});
+    const data=JSON.parse(init.body);
+    if(url.endsWith('/embeddings')) return Response.json({data:data.input.map((_,index)=>({index,embedding:[1]}))});
+    const p=JSON.parse(data.messages[1].content).passages[0];
+    const findings=empty?[]:[{text:'납기 지연',ref:p.ref,quote:p.text}];
+    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({findings})}}]});
+  });
+  const url='http://localhost/api/documents';
+  const post=(topic,secret=token)=>POST(new Request(url,{method:'POST',headers:{origin:'http://localhost','content-type':'application/json','x-document-owner':secret},body:JSON.stringify({id,documents:docs,topic})}));
+  fail=true;assert.equal((await post('납기 지연')).status,503);fail=false;
+  const first=await post('납기 지연');assert.equal(first.status,200);
+  const {code,result}=await first.json();assert.match(code,/^\d{8}$/);assert.equal(result.findings.length,1);
+  assert.equal((await post('납기 지연')).status,200);assert.equal(calls,3);
+  assert.equal((await post('다른 주제','a'.repeat(64))).status,403);
+  empty=true;assert.equal((await (await post('무관한 질문')).json()).result.findings.length,0);
+  assert.equal((await post('한도 초과')).status,429);
+  const open=await lookup(new Request('http://localhost/results?code='+code));
+  assert.equal(open.headers.get('location'),'/documents?id='+id);
+  const cookie=open.headers.get('set-cookie').split(';')[0];
+  const saved=await GET(new Request(url+'?id='+id,{headers:{cookie}}));
+  const data=await saved.json();assert.equal(data.editable,false);assert.equal(data.topics.length,2);
+  assert.equal((await GET(new Request(url+'?id='+id))).status,403);
+  const another='run-'+randomUUID().replaceAll('-','');
+  assert.equal((await GET(new Request(url+'?id='+another,{headers:{cookie}}))).status,403);
+  assert.equal((await query('select count(*) from axis_viewer.document_topics where dataset=$1',[id])).rows[0].count,'2');
+});
