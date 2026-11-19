@@ -1,8 +1,10 @@
 'use client';
 import {useEffect,useState} from 'react';
-import TopicResult from './TopicResult.js';
+import TopicResult,{TopicSummary} from './TopicResult.js';
+import Script from 'next/script';
+import {headerContents} from '../../lib/viewer-shell.js';
 import {MAX_FILES, MAX_CHARACTERS} from '../../lib/document-limits.js';
-import './style.css';
+
 
 const randomKey=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 export default function Documents(){
@@ -58,8 +60,14 @@ export default function Documents(){
     }catch(err){setMessage(err.message);}finally{setBusy(false);}
   }
   const current=topics.find(t=>t.topic===selected);
-  return <main className="documents"><nav><a href="/">뷰어 홈</a><a href="/results">조회 번호 입력</a>{(stored||files.length>0)&&<a href="/documents">새 문서 분석</a>}</nav>
-    <h1>문서 분석</h1>{code&&<p>다시 열 때 사용할 조회 번호 <strong>{code}</strong></p>}
+  return <>
+    <link rel="stylesheet" href="/graph.css" precedence="viewer"/><link rel="stylesheet" href="/integrated.css" precedence="viewer"/><link rel="stylesheet" href="/analysis-view.css" precedence="analysis"/>
+    <header className="app-header" dangerouslySetInnerHTML={{__html:headerContents}}/><Script src="/analysis-theme.js"/>
+    <div className="app-subbar"><span>문서 분석</span>{code&&<span>조회 번호 <strong>{code}</strong></span>}</div>
+    <div className="workspace integrated-workspace analysis-workspace">
+    <aside className="sidebar app-sidebar"><div className="nav-heading"><h2>자료 범위</h2></div><nav aria-label="분석 작업"><a href="/documents">새 문서 분석</a><a href="/results">저장된 결과 열기</a></nav>
+    {!!topics.length&&<label>저장된 주제<select value={selected} onChange={e=>setSelected(e.target.value)}>{topics.map(t=><option key={t.topic}>{t.topic}</option>)}</select></label>}</aside>
+    <main className="table-pane"><header className="table-heading"><h2>{selected||'문서 분석'}</h2></header>
     {editable&&<form onSubmit={submit}>{!stored&&<><label>분석할 문서<input type="file" multiple accept=".docx,.hwp,.hwpx" disabled={busy||reading}
       onChange={e=>readFiles(Array.from(e.target.files))}/></label><small>DOCX · HWP · HWPX / 최대 5개, 파일당 10MB, 본문 합계 6만 자</small>
       <ul>{files.map((f,i)=><li key={i}>{f.name} · {f.error||f.document.passages.length+'개 원문 구절 추출'}</li>)}</ul>
@@ -68,6 +76,7 @@ export default function Documents(){
       <label>궁금한 주제<input value={topic} maxLength={500} onChange={e=>setTopic(e.target.value)} placeholder="예: 납기 지연과 관련된 업체와 후속 조치" required/></label>
       <button disabled={busy||reading||!topic.trim()||(!stored&&(!docs.length||count>MAX_CHARACTERS))}>{busy?'분석 중…':'주제 분석하기'}</button></form>}
     {message&&<p role="alert">{message}</p>}
-    {!!topics.length&&<label>저장된 주제<select value={selected} onChange={e=>setSelected(e.target.value)}>{topics.map(t=><option key={t.topic}>{t.topic}</option>)}</select></label>}
-    {current&&<TopicResult key={selected} result={current.result}/>}</main>;
+    {current&&<TopicSummary result={current.result}/>}</main>
+    <TopicResult key={selected} result={current?.result}/>
+    </div></>;
 }

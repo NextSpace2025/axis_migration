@@ -1,3 +1,4 @@
+import {entryPage} from '../../lib/viewer-shell.js';
 import {createHmac} from 'node:crypto';
 import {isIP} from 'node:net';
 import {privateHeaders, resultCookie} from '../../lib/access.js';
@@ -60,18 +61,12 @@ async function openResult(request, code) {
     message = '숫자 8자리 조회 번호를 입력하세요.';
     status = 400;
   }
-  return reply(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>자료 조회 · axis_migration</title><link rel="stylesheet" href="/graph.css">
-    <style>body{height:auto;overflow:auto;padding:1.25rem}main{max-width:32rem;margin:3rem auto}
-    h1{margin:.75rem 0 1rem}label{display:block;margin-bottom:.5rem}input,button{font:inherit;padding:.55rem}</style></head>
-    <body><main><a href="/">뷰어 홈</a><h1>분석 결과 조회</h1>
-    <form action="/results" method="post">
+  return reply(entryPage('분석 결과 조회', `<form action="/results" method="post">
       <label for="code">8자리 조회 번호</label>
       <input id="code" name="code" inputmode="numeric" minlength="${RESULT_CODE_LENGTH}"
         maxlength="${RESULT_CODE_LENGTH}" pattern="[0-9]{${RESULT_CODE_LENGTH}}"
         autocomplete="off" value="${valid ? code : ''}" required>
       <button type="submit">자료 열기</button>
-    </form>${message ? '<p role="status">'+message+'</p>' : ''}</main></body></html>`,
+    </form>${message ? '<p role="status">'+message+'</p>' : ''}`),
     'text/html; charset=utf-8',headers,status);
 }
