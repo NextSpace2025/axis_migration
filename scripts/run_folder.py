@@ -79,6 +79,18 @@ conversion of the full requested scope. Never modify the proposal, decisions
 or approval. Reflect review changes and their actual coverage in validation.md.
 Return waiting if the model needs further changes; never silently change it."""
 
+PACK_STAGES = {"design": "design", "migration": "migration", "append": "migration"}
+
+PACK_INSTRUCTIONS = """Company pack {id} {version} is user-supplied company policy kept outside
+the public package. Read the pack files listed below for this stage and no others.
+Apply their classifications, header models and vendor/site rules as supplied company
+mappings: they take precedence over starter proposals, but check their fit against
+the actual sources and report mismatches instead of forcing rows. Package rules take
+precedence over the pack: originals stay read-only, results go only to this run, and
+existing ledgers, databases or external services are never written. Record the pack
+id and version in this stage's structure.md or validation.md.
+Pack files: {files}"""
+
 
 def run_name():
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
@@ -287,6 +299,28 @@ def new_run(source, *, publish=False):
     return run
 
 
+def load_pack(path, source):
+    """Read a company pack.json and check every listed file against its sha256."""
+    path = Path(path).resolve(strict=True)
+    data = path.read_bytes()
+    pack = json.loads(data)
+    entries = [*pack.get("rules", []), *pack.get("models", [])]
+    if not (isinstance(pack.get("pack_id"), str) and isinstance(pack.get("pack_version"), str) and entries):
+        raise ValueError("회사 팩의 pack_id, pack_version, rules를 확인하세요.")
+    files = []
+    for entry in entries:
+        file = (path.parent / entry["path"]).resolve(strict=True)
+        if (not file.is_file() or not isinstance(entry["stages"], list) or
+                any(place.is_relative_to(PACKAGE) or place.is_relative_to(source) for place in (path, file))):
+            raise ValueError(f"회사 팩은 공개 패키지와 원본 폴더 밖에 두세요. {entry['path']}")
+        if sha256(file.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError(f"회사 팩 파일이 pack.json의 sha256과 다릅니다. {entry['path']}")
+        files.append({"path": str(file), "stages": entry["stages"], "use": str(entry.get("use", ""))})
+    return {"path": str(path), "id": pack["pack_id"], "version": pack["pack_version"],
+            "sha256": sha256(data).hexdigest(), "reference_company": pack.get("reference_company"),
+            "files": files}
+
+
 def resume_context(path):
     run = path.resolve(strict=True)
     source = Path(read_object(run / "workflow.json")["source"]).resolve(strict=True)
@@ -302,6 +336,7 @@ def main(argv=None):
     parser.add_argument("--company", help="기준 회사명")
     parser.add_argument("--answer", help="확인 대기 질문에 대한 답변")
     parser.add_argument("--local", choices=["ollama", "lmstudio"], help="로컬 모델 제공자")
+    parser.add_argument("--pack", type=Path, help="회사 팩 pack.json (공개 패키지와 원본 폴더 밖)")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -335,6 +370,18 @@ def main(argv=None):
             parser.error("기록된 원본 폴더가 바뀌었습니다.")
         if metadata["stage"] == "append":
             parser.error(f"장부를 다시 열려면 --resume \"{run.parent / metadata['ledger']}\"를 사용하세요.")
+        if args.pack:
+            try:
+                pack = load_pack(args.pack, source)
+            except (OSError, KeyError, TypeError, ValueError) as error:
+                parser.error(str(error))
+            saved = metadata.get("pack")
+            if (saved["sha256"] != pack["sha256"]) if saved else metadata["stage"] != "design":
+                parser.error("분석을 시작한 뒤에는 회사 팩을 바꿀 수 없습니다. 새 분석을 시작하세요.")
+            if not saved:
+                metadata["pack"] = pack
+                record_entry(record, f"- Company pack: {pack['id']} {pack['version']} "
+                                     f"(sha256 {pack['sha256']}, {pack['path']})")
         return process(args, source, run, record, prior, metadata)
 
 
@@ -349,6 +396,14 @@ def saved_company(prior):
 
 def agent_stage(run, source, record, metadata, stage, instructions, answer, required,
                 *, waiting_action="답변을 확인한 후 --resume 결과폴더 --answer 답변으로 재개합니다."):
+    pack = metadata.get("pack")
+    if pack:
+        if load_pack(pack["path"], source) != pack:
+            raise ValueError("회사 팩이 분석 시작 이후 바뀌었습니다. 새 분석을 시작하세요.")
+        files = [{"path": f["path"], "use": f["use"]} for f in pack["files"]
+                 if PACK_STAGES.get(metadata["stage"]) in f["stages"]]
+        instructions += "\n\n" + PACK_INSTRUCTIONS.format(
+            id=pack["id"], version=pack["version"], files=json.dumps(files, ensure_ascii=False))
     checkpoint(run, "running", stage, stage + " 작업 중입니다.")
     record_entry(record, f"- Stage: {stage}")
     prompt = f"""Read workflow instructions at {PACKAGE / 'output/agents.md'} and
@@ -533,7 +588,7 @@ class Ledger:
         batch = new_run(self.source)
         metadata = {**read_object(batch / "workflow.json"), "stage": "append",
                     "ledger": self.run.name, "company": self.metadata["company"],
-                    "local": self.metadata["local"]}
+                    "local": self.metadata["local"], "pack": self.metadata.get("pack")}
         hashes = {**known, **added}
         scope = {"files": list(hashes), "new_files": list(added)}
         record_entry(self.record, f"## {datetime.now(timezone.utc).isoformat()} — 새 서류 추가\n"
@@ -598,11 +653,15 @@ def process(args, source, run, record, prior, metadata):
     state_path = run / "workflow.json"
     if metadata["stage"] != "design" and args.company and args.company != metadata["company"]:
         raise ValueError("기준 회사가 바뀌면 새 분석을 시작하세요.")
-    metadata["company"] = args.company or metadata["company"] or saved_company(prior)
+    pack_company = (metadata.get("pack") or {}).get("reference_company")
+    known = args.company or metadata["company"] or saved_company(prior)
+    metadata["company"] = known or pack_company
     metadata["local"] = args.local or metadata["local"]
     save_object(state_path, metadata)
     if args.company:
         record_entry(record, "- Reference company (user): " + args.company)
+    elif not known and pack_company:
+        record_entry(record, "- Reference company (company pack): " + pack_company)
     if not metadata["company"]:
         checkpoint(run, "waiting", "기준 회사 확인", "원본 내용을 읽기 전에 기준 회사가 필요합니다.",
                    pending=["자료를 정리할 기준 회사(발주자)의 이름"], next_action="--resume 결과폴더 --company 회사명")

@@ -247,6 +247,53 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(len(called), 3)
                 self.assertTrue((run / "export.sql").is_file())
 
+    def test_company_pack_supplies_stage_files_and_stops_when_changed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "문서"
+            source.mkdir()
+            (source / "명세서.txt").write_text("납품 수량 2", encoding="utf-8")
+            pack_dir = Path(directory) / "팩"
+            pack_dir.mkdir()
+            rules = {"분류.md": ["design"], "현장.md": ["migration"]}
+            for name in rules:
+                (pack_dir / name).write_text(name, encoding="utf-8")
+
+            def write_pack():
+                workflow.save_object(pack_dir / "pack.json", {
+                    "pack_id": "example", "pack_version": "1", "reference_company": "예시건설",
+                    "rules": [{"path": name, "stages": stages,
+                               "sha256": workflow.sha256((pack_dir / name).read_bytes()).hexdigest()}
+                              for name, stages in rules.items()]})
+
+            write_pack()
+            prompts = []
+
+            def agent(prompt, _run, _metadata):
+                prompts.append(prompt)
+                return {"state": "waiting", "reason": "확인"}
+
+            with patch.object(workflow, "run_agent", side_effect=agent):
+                self.assertEqual(workflow.main(["--input", str(source), "--pack", str(pack_dir / "pack.json")]), 2)
+                run = next((source.parent / "output" / source.name).iterdir())
+                self.assertEqual(workflow.read_object(run / "workflow.json")["company"], "예시건설")
+                self.assertIn(str((pack_dir / "분류.md").resolve()), prompts[0])
+                self.assertNotIn("현장.md", prompts[0])
+                record = (source / ".axis_migration" / "record.md").read_text(encoding="utf-8")
+                self.assertIn("- Company pack: example 1", record)
+                self.assertIn("- Reference company (company pack): 예시건설", record)
+
+                (pack_dir / "분류.md").write_text("바뀐 규칙", encoding="utf-8")
+                self.assertEqual(workflow.main(["--resume", str(run)]), 1)
+                self.assertIn("회사 팩", workflow.read_status(run)["error"])
+                write_pack()
+                with self.assertRaises(SystemExit):
+                    workflow.main(["--resume", str(run), "--pack", str(pack_dir / "pack.json")])
+            self.assertEqual(len(prompts), 1)
+
+            (source / "pack.json").write_bytes((pack_dir / "pack.json").read_bytes())
+            with self.assertRaises(SystemExit):
+                workflow.main(["--input", str(source), "--pack", str(source / "pack.json")])
+
     def test_renamed_composite_relationship_must_exist_in_sqlite(self):
         proposal = {"relationships": [{
             "from_table": "lines", "from_columns": ["source", "order_no"],
