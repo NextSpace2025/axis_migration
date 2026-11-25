@@ -31,9 +31,9 @@ def run_path(run_dir):
     return resume_context(absolute_path(run_dir))[0]
 
 
-def launch(run, company=None, answer=None, local=None):
+def launch(run, company=None, answer=None, local=None, pack=None):
     command = [sys.executable, "-u", str(RUNNER), "--resume", str(run), "--no-browser"]
-    for option, value in (("--company", company), ("--answer", answer), ("--local", local)):
+    for option, value in (("--company", company), ("--answer", answer), ("--local", local), ("--pack", pack)):
         if value:
             command.append(f"{option}={value}")
     log = run / "runner.log"
@@ -52,11 +52,13 @@ def launch(run, company=None, answer=None, local=None):
 
 def start_folder(input_dir: str, company: str | None = None,
                  local: Literal["ollama", "lmstudio"] | None = None,
-                 publish: bool | None = None) -> dict[str, Any]:
-    """Analyze a folder, then publish verified results if web settings exist. Set publish=false for local only."""
+                 publish: bool | None = None, pack: str | None = None) -> dict[str, Any]:
+    """Analyze a folder, then publish verified results if web settings exist. Set publish=false for local only.
+    pack is an optional absolute path to a user-supplied company pack.json."""
     if publish is None:
         publish = (RUNNER.parent.parent / "web" / ".env").is_file()
-    return launch(new_run(absolute_path(input_dir), publish=publish), company=company, local=local)
+    pack = str(absolute_path(pack)) if pack else None
+    return launch(new_run(absolute_path(input_dir), publish=publish), company=company, local=local, pack=pack)
 
 
 def resume_folder(run_dir: str, company: str | None = None, answer: str | None = None) -> dict[str, Any]:
@@ -156,7 +158,8 @@ def main():
         raise SystemExit('MCP SDK가 필요합니다. python -m pip install "mcp>=1.28,<2"') from error
     server = FastMCP("Axis Migration", instructions=(
         "Use start_folder for a requested local folder migration with the user's explicit absolute "
-        "input path and reference company when known. The runner loads the bundled design skill. "
+        "input path and reference company when known. Pass pack only with an absolute company "
+        "pack.json path the user supplied. The runner loads the bundled design skill. "
         "Use folder_status with the returned run_dir to follow progress and share the active review URL. "
         "The user confirms the structure in the browser before the runner loads the migration skill "
         "and converts to SQLite. Configured MCP runs upload approved results after verification; "

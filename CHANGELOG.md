@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Accept a private company pack (`--pack`, `start_folder(pack=...)`): a
+  `pack.json` outside the package and input folder whose rule and model files
+  are checked by sha256 before every stage. Each stage reads only its tagged
+  files; a changed pack stops the run, and the pack id/version/hash is recorded.
+
 - Make the local MCP server the default entry point for folder migration and
   document installation, status checks, browser review, and resume.
 

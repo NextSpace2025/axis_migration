@@ -189,6 +189,31 @@ The runner creates a fresh local database under
 `INPUT.parent/output/INPUT.name/RUN_ID/`. Company configuration and data stay
 outside this public repository.
 
+### Company pack
+
+A company that already keeps its own rules can supply them as a private
+`pack.json` with `pack="/absolute/path/pack.json"` on `start_folder`, or
+`--pack` in the CLI. The pack must sit outside this package and the input folder:
+
+```json
+{
+  "pack_id": "example", "pack_version": "2026.11.26",
+  "reference_company": "예시건설",
+  "rules": [{"path": "rules/classification.md", "stages": ["design"],
+             "sha256": "…", "use": "company classification"}],
+  "models": [{"path": "models/ledger.json", "stages": ["design"], "sha256": "…"}]
+}
+```
+
+Paths are relative to `pack.json`. The runner checks every listed file against
+its `sha256` before each stage and stops if the pack changed after the run
+started. Each Codex stage reads only the files tagged for it (`design`, or
+`migration` for conversion and added documents). Pack rules take precedence over
+starter proposals but not over package rules: originals stay read-only, and
+existing ledgers or databases are never written. `reference_company` is used when
+no company was supplied. The pack id, version and hash are written to the
+folder record.
+
 ### Direct CLI and standalone viewer
 
 For terminal use, the same runner supports starting and resuming directly:
@@ -198,6 +223,7 @@ python scripts/run_folder.py --input "D:\자료\거래명세서" --company "기�
 python scripts/run_folder.py --resume "실행 폴더"
 ```
 
+Add `--pack "/absolute/path/pack.json"` to a new run to supply a company pack.
 Append `--answer "답변"` when resuming a run that requests a decision. Use
 `--no-browser` to print the URL and open it yourself. Keep the terminal open
 while viewing. You can also open an existing SQLite file directly:
