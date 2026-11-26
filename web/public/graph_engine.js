@@ -97,7 +97,7 @@
   async function copyPath(path){try{await navigator.clipboard.writeText(path);toast('원본 위치를 복사했습니다.');}catch{toast('아래 원본 경로를 선택해 복사해 주세요.');}}
   function toast(msg){$('toast').textContent=msg;$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,2500);}
   function render(){renderList();renderGraph();renderInspector();}
-  $('total-count').textContent=data.counts.tables == null ? data.counts.files+'개 파일' : data.counts.tables+'개';
+  const counts=data.counts||{files:data.nodes.filter(n=>n.kind==='file').length};$('total-count').textContent=counts.tables == null ? counts.files+'개 파일' : counts.tables+'개';
   $('search').addEventListener('input',ev=>{state.query=ev.target.value;state.local=false;$('local').setAttribute('aria-pressed','false');render();fit();});
   document.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{state.kind=b.dataset.kind;document.querySelectorAll('[data-kind]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});renderList();}));
   $('status-filter').addEventListener('change',ev=>{state.status=ev.target.value;render();fit();});

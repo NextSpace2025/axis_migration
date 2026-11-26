@@ -355,6 +355,13 @@ def review_server(run, source, proposal, snapshot, *, draft_notice=None):
             path = urlsplit(self.path).path
             if path == session:
                 with lock:
+                    if state["finished"] and state["result"]:
+                        # The finished review lives on as the result page at the same address.
+                        self.send_response(303)
+                        self.send_header("Location", state["result"])
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        return
                     current = json.dumps({"proposal": proposal, "decisions": decisions,
                                           "folder": source.name}, ensure_ascii=False).replace("<", "\\u003c")
                 return self.respond(template.replace("/* AXIS_DATA */", current).encode("utf-8"),
@@ -428,8 +435,24 @@ def review_server(run, source, proposal, snapshot, *, draft_notice=None):
             with lock:
                 state.update(message=message, result=result, finished=finished)
 
+        def attach(viewer):
+            """Serve the result viewer from this review's address; the review paths stay under the session."""
+            class Combined(Handler, viewer):
+                def do_GET(self):
+                    if urlsplit(self.path).path.startswith(session):
+                        return Handler.do_GET(self)
+                    return viewer.do_GET(self)
+
+                def do_POST(self):
+                    if urlsplit(self.path).path.startswith(session):
+                        return Handler.do_POST(self)
+                    return viewer.do_POST(self)
+
+            server.RequestHandlerClass = Combined
+            return "http://" + host + "/"
+
         try:
-            yield "http://" + host + session, approval, update
+            yield "http://" + host + session, approval, update, attach
         finally:
             server.shutdown()
             worker.join()

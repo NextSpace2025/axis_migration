@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from snapshot import emit, remove_machine_paths
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from run_folder import APPROVAL, checked_approval, identifier, read_object, resume_context, verify
+from run_folder import APPROVAL, LEDGER, checked_approval, identifier, read_object, resume_context, verify
 from view_db import column_info, table_info
 
 
@@ -42,7 +42,7 @@ def graph_data(files, relationships):
         edges.append({"id": f"E{number}", "from": file["id"], "to": terms[key]["id"],
                       "label": link["kind"], "status": "observed" if link["status"] == "confirmed" else "candidate",
                       "note": link["evidence"], "evidence": [{"source_id": file["id"], "basis": link["evidence"]}]})
-    return {"nodes": nodes, "edges": edges}, file_nodes
+    return {"nodes": nodes, "edges": edges, "counts": {"files": len(file_nodes)}}, file_nodes
 
 
 def stored_value(value):
@@ -74,6 +74,19 @@ def row_binding(key, row, file_nodes, references):
             "location": sources[0]["location"] if sources else ""}
 
 
+def current_version(run):
+    """Return the run folder holding the latest verified ledger rows."""
+    if not (run / LEDGER).is_file():
+        return run
+    current = run.parent / read_object(run / LEDGER)["version"]
+    if current == run:
+        return run
+    if (current.parent != run.parent or current.resolve(strict=True) != current
+            or read_object(current / "workflow.json").get("ledger") != run.name):
+        raise ValueError("장부의 결과 폴더를 확인하세요.")
+    return current
+
+
 def snapshot_folder(path):
     run, source = resume_context(path)
     workflow = read_object(run / "workflow.json")
@@ -81,14 +94,21 @@ def snapshot_folder(path):
     if (workflow.get("stage") != "viewer" or not workflow.get("header_review")
             or not re.fullmatch(r"run-[a-f0-9]{32}", key)):
         raise ValueError("검토 승인과 SQLite 검증을 마친 배포 대상 작업이 필요합니다.")
-    checked_approval(run, source, workflow["snapshot"])
-    primary, catalog = verify(run, export=False)
+    data = current_version(run)
+    if data == run:
+        checked_approval(run, source, workflow["snapshot"])
+        primary, catalog = verify(run, export=False)
+    else:
+        # A ledger version keeps the first approval unchanged and covers every hashed document.
+        if read_object(data / APPROVAL) != read_object(run / APPROVAL):
+            raise ValueError("장부 버전의 확정 구조가 처음 승인한 구조와 다릅니다.")
+        primary, catalog = verify(data, export=False, expected_paths=set(read_object(run / LEDGER)["hashes"]))
     graph, file_nodes = graph_data(catalog.pop("source_files"), catalog.pop("source_relationships"))
     if catalog.get("purpose_tables"):
         catalog["purpose_tables"] = [{k: v for k, v in t.items() if k != "rows"} for t in catalog["purpose_tables"]]
     digest = sha256()
     for name in ("data.sqlite", "viewer.json", APPROVAL):
-        with (run / name).open("rb") as stream:
+        with (data / name).open("rb") as stream:
             digest.update(name.encode())
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(block)
@@ -97,7 +117,7 @@ def snapshot_folder(path):
          default_table=primary, catalog=remove_machine_paths(catalog), graph=remove_machine_paths(graph),
          snapshot_sha256=digest.hexdigest())
 
-    with closing(sqlite3.connect((run / "data.sqlite").as_uri() + "?mode=ro", uri=True)) as db:
+    with closing(sqlite3.connect((data / "data.sqlite").as_uri() + "?mode=ro", uri=True)) as db:
         db.row_factory = sqlite3.Row
         db.execute("BEGIN")
         names = [row[0] for row in db.execute(

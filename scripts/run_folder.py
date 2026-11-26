@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from urllib.parse import urlencode
 from urllib.request import urlopen
 from uuid import uuid4
@@ -241,12 +242,21 @@ def checkpoint(run, state, stage, summary, **kwargs):
     print(render(read_status(run)), flush=True)
 
 
-def open_result(run, primary, catalog, no_browser, complete, ledger=None):
+def open_result(run, primary, catalog, no_browser, complete, ledger=None, attach=None):
+    """Serve results; with attach, reuse the review page's address instead of opening a second one."""
     handler = make_handler(run / "data.sqlite", 50, catalog, ledger=ledger)
-    with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
-        worker = threading.Thread(target=server.serve_forever, daemon=True)
-        worker.start()
-        base = f"http://127.0.0.1:{server.server_port}/?"
+    with ExitStack() as stack:
+        if attach:
+            worker = None
+            origin = attach(handler)
+        else:
+            server = stack.enter_context(ThreadingHTTPServer(("127.0.0.1", 0), handler))
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            stack.callback(worker.join)
+            stack.callback(server.shutdown)
+            origin = f"http://127.0.0.1:{server.server_port}/"
+        base = origin + "?"
         url = base + urlencode({"view": "dashboard"})
         try:
             for query in ({"view": "dashboard"}, {"view": "source-links"},
@@ -259,13 +269,15 @@ def open_result(run, primary, catalog, no_browser, complete, ledger=None):
             if not no_browser:
                 webbrowser.open(url)
             print("이 창에서 Ctrl+C를 누르면 결과 화면을 닫습니다.", flush=True)
-            while worker.is_alive() and not close_requested(run):
-                worker.join(0.3)
+            while not close_requested(run):
+                if worker is None:
+                    time.sleep(0.3)
+                elif not worker.is_alive():
+                    break
+                else:
+                    worker.join(0.3)
         except KeyboardInterrupt:
             pass
-        finally:
-            server.shutdown()
-            worker.join()
 
 
 def check_location(source, run):
@@ -411,17 +423,18 @@ def checked_approval(run, source, snapshot):
         raise ValueError("확정 구조와 헤더 제안이 일치하지 않습니다. 검토 자료를 확인하세요.")
 
 
-def publish_result(run):
+def publish_result(run, *, version=None, update=False):
+    """Upload the current verified ledger version; update replaces the earlier upload under the same code."""
     web = PACKAGE / "web"
     node = shutil.which("node")
     if not node or not (web / ".env").is_file() or not (web / "node_modules" / "pg").is_dir():
         raise ValueError("운영 연결에는 Node.js와 web/.env, web 폴더의 npm ci 설정이 필요합니다.")
-    result = subprocess.run([node, "--env-file=.env", "scripts/import.mjs", "--run", str(run)],
-                            cwd=web, env={**os.environ, "AXIS_PYTHON": sys.executable},
+    command = [node, "--env-file=.env", "scripts/import.mjs", "--run", *(["--update"] if update else []), str(run)]
+    result = subprocess.run(command, cwd=web, env={**os.environ, "AXIS_PYTHON": sys.executable},
                             capture_output=True, encoding="utf-8", timeout=1800)
     if result.returncode:
         raise ValueError("Supabase 업로드 또는 운영 조회에 실패했습니다. web/.env 연결을 확인한 후 재개하세요.")
-    published = json.loads(result.stdout)
+    published = {**json.loads(result.stdout), "version": version or run.name}
     save_object(run / HOSTED_RESULT, published)
     return published
 
@@ -591,7 +604,21 @@ ledger. The wrapper promotes the copy only after verification."""
                    checks="passed", results=(*results, "export.sql"))
         record_entry(self.record, f"- Ledger: {self.run}\n- Results: {batch / 'data.sqlite'}")
         message = read_status(batch)["summary"]
-        return message + (f" 이미 반영한 파일 {duplicates}개는 건너뛰었습니다." if duplicates else "")
+        message += f" 이미 반영한 파일 {duplicates}개는 건너뛰었습니다." if duplicates else ""
+        if self.metadata.get("hosted_dataset"):
+            try:
+                published = self.publish()
+                message += f" 운영 사이트에도 반영했습니다. 조회 코드 {published['code']}"
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+                record_entry(self.record, f"- Hosted ledger update error: {error}")
+                message += " 운영 사이트 업로드는 실패했습니다. 결과를 다시 열면 업로드를 다시 시도합니다."
+        return message
+
+    def publish(self):
+        version = self.current[0].name
+        published = publish_result(self.run, version=version, update=True)
+        record_entry(self.record, f"- Hosted ledger version: {version}\n- Hosted viewer: {published['viewer_url']}")
+        return published
 
 
 def process(args, source, run, record, prior, metadata):
@@ -611,6 +638,7 @@ def process(args, source, run, record, prior, metadata):
     status_run = run
     stack = ExitStack()
     update_review = None
+    attach_result = None
     review_enabled = metadata.get("header_review", False)
     try:
         if args.answer:
@@ -642,7 +670,8 @@ def process(args, source, run, record, prior, metadata):
             if not (run / APPROVAL).exists():
                 proposal = read_object(run / PROPOSAL)
                 check_proposal(proposal, snapshot)
-                url, approved, update_review = stack.enter_context(review_server(run, source, proposal, snapshot))
+                url, approved, update_review, attach_result = stack.enter_context(
+                    review_server(run, source, proposal, snapshot))
                 def review_checkpoint():
                     results = ["structure.md", PROPOSAL]
                     if (run / DRAFT).is_file():
@@ -707,8 +736,12 @@ def process(args, source, run, record, prior, metadata):
                 if update_review:
                     update_review("Supabase에 결과를 올리고 운영 주소를 확인합니다.")
                 checked_approval(run, source, metadata["snapshot"])
-                published = publish_result(run)
+                published = publish_result(run, version=ledger.current[0].name if ledger else None)
                 record_entry(record, f"- 운영 조회 코드: {published['code']}\n- 운영 조회: {published['viewer_url']}")
+            elif ledger and published.get("version", run.name) != ledger.current[0].name:
+                checkpoint(status_run, "running", stage, "추가한 서류를 반영한 장부를 운영 사이트에 다시 올립니다.",
+                           checks="passed", results=[ledger.current[0] / "data.sqlite"])
+                published = ledger.publish()
             stage = RESULT_STAGE
         launcher = ["python", str(Path(__file__).resolve()), "--resume", str(run)]
         command = ("& " + " ".join("'" + arg.replace("'", "''") + "'" for arg in launcher)
@@ -732,9 +765,10 @@ def process(args, source, run, record, prior, metadata):
                        checks="passed", results=[run / name for name in results])
             mark_view(run, url)
             if update_review:
-                update_review(summary, result=published["viewer_url"] if published else url, finished=True)
+                update_review(summary, result=url, finished=True)
 
-        open_result(run, primary, catalog, args.no_browser or bool(update_review), complete, ledger)
+        open_result(run, primary, catalog, args.no_browser or bool(update_review), complete, ledger,
+                    attach=attach_result)
     except (OSError, ValueError, TypeError, KeyError, sqlite3.Error, subprocess.SubprocessError) as error:
         record_entry(record, f"- Error at {stage}: {error}")
         checkpoint(status_run, "error", stage, "작업 중 오류가 발생했습니다.", error=str(error),
