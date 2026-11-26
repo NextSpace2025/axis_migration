@@ -110,6 +110,79 @@ class WorkflowTests(unittest.TestCase):
             with closing(sqlite3.connect(run / "data.sqlite")) as db:
                 self.assertEqual(db.execute("SELECT sum(quantity) FROM lines").fetchone(), (8,))
 
+    def test_hosted_ledger_uploads_each_appended_version_and_retries_on_reopen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "문서"
+            source.mkdir()
+            original = source / "발주.txt"
+            original.write_text("발주 수량 4", encoding="utf-8")
+            run = workflow.new_run(source, publish=True)
+            metadata = {**workflow.read_object(run / "workflow.json"), "company": "Example",
+                        "stage": "viewer", "snapshot": workflow.source_snapshot(source)}
+            workflow.save_object(run / "workflow.json", metadata)
+            workflow.save_object(run / workflow.APPROVAL, {
+                "files": [{"path": original.name}],
+                "tables": [{"name": "lines", "mappings": [
+                    {"column": "quantity", "type": "INTEGER", "action": "use"}]}],
+            })
+            workflow.save_object(run / "viewer.json", {
+                "primary_table": "lines", "catalog": {"tables": {}}, "relationships": [],
+                "files": [{"path": original.name, "status": "typed_mapped", "description": "발주서"}],
+            })
+            workflow.save_object(run / workflow.PROPOSAL, {})
+            for name in ("structure.md", "validation.md"):
+                (run / name).write_text("Checked", encoding="utf-8")
+            with closing(sqlite3.connect(run / "data.sqlite")) as db:
+                db.executescript("CREATE TABLE lines(source TEXT, quantity INTEGER);"
+                                 "INSERT INTO lines VALUES ('발주.txt:1', 4);")
+            first = {"code": "12345678", "viewer_url": "https://viewer.test/results?code=12345678",
+                     "dataset": metadata["hosted_dataset"], "version": run.name}
+            workflow.save_object(run / workflow.HOSTED_RESULT, first)
+            statement = source / "거래명세서.txt"
+            statement.write_text("납품 수량 2", encoding="utf-8")
+            uploads = []
+            failing = [True]
+
+            def agent(_prompt, batch, _metadata):
+                with closing(sqlite3.connect(batch / "data.sqlite")) as db, db:
+                    db.execute("INSERT INTO lines VALUES ('거래명세서.txt:1', 2)")
+                config = workflow.read_object(batch / "viewer.json")
+                config["files"].append({"path": statement.name, "status": "typed_mapped", "description": "명세서"})
+                workflow.save_object(batch / "viewer.json", config)
+                (batch / "validation.md").write_text("Checked append", encoding="utf-8")
+                return {"state": "ready", "reason": ""}
+
+            def publish(target, *, version=None, update=False):
+                uploads.append((target, version, update))
+                if failing[0]:
+                    raise ValueError("offline")
+                result = {**first, "version": version}
+                workflow.save_object(target / workflow.HOSTED_RESULT, result)
+                return result
+
+            def browser(url):
+                base = url.split("?")[0]
+                with urlopen(base + "add-documents", timeout=5) as response:
+                    token = re.search(r'name="token" value="([^"]+)"', response.read().decode())[1]
+                request = Request(base + "add-documents",
+                                  urlencode({"token": token, "file": statement.name}).encode(),
+                                  headers={"Origin": base.rstrip("/")})
+                with urlopen(request, timeout=8) as response:
+                    self.assertIn("운영 사이트 업로드는 실패했습니다", response.read().decode())
+                raise KeyboardInterrupt
+
+            with patch.object(workflow, "run_agent", side_effect=agent), patch.object(
+                    workflow, "publish_result", side_effect=publish), patch.object(
+                    workflow.webbrowser, "open", side_effect=browser):
+                self.assertEqual(workflow.main(["--resume", str(run)]), 0)
+                version = workflow.read_object(run / workflow.LEDGER)["version"]
+                self.assertEqual(uploads, [(run, version, True)])
+                failing[0] = False
+                with patch.object(workflow.webbrowser, "open", side_effect=KeyboardInterrupt):
+                    self.assertEqual(workflow.main(["--resume", str(run)]), 0)
+            self.assertEqual(uploads, [(run, version, True), (run, version, True)])
+            self.assertEqual(workflow.read_object(run / workflow.HOSTED_RESULT)["version"], version)
+
     def test_resume_migration_and_reopen_without_rereading_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "문서"
@@ -246,6 +319,31 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(workflow.read_status(run), saved)
                 self.assertEqual(len(called), 3)
                 self.assertTrue((run / "export.sql").is_file())
+
+    def test_review_address_also_serves_results_after_approval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory) / "run"
+            source = Path(directory) / "source"
+            run.mkdir()
+            source.mkdir()
+            proposal = {"files": [], "tables": []}
+            workflow.save_object(run / workflow.PROPOSAL, proposal)
+            with closing(sqlite3.connect(run / "data.sqlite")) as db:
+                db.executescript("CREATE TABLE lines(quantity INTEGER); INSERT INTO lines VALUES (4);")
+            with workflow.review_server(run, source, proposal, {}) as (url, _approved, update, attach):
+                origin = attach(workflow.make_handler(run / "data.sqlite", 50, {}))
+                self.assertEqual(urlsplit(origin).netloc, urlsplit(url).netloc)
+                with urlopen(url, timeout=5) as response:
+                    self.assertIn("관계도", response.read().decode())
+                with urlopen(url + "status", timeout=5) as response:
+                    self.assertFalse(json.load(response)["finished"])
+                result = origin + "?view=dashboard"
+                with urlopen(result, timeout=5) as response:
+                    self.assertIn("<main>", response.read().decode())
+                update("done", result=result, finished=True)
+                with urlopen(url, timeout=5) as response:
+                    self.assertEqual(response.url, result)
+                    self.assertIn("<main>", response.read().decode())
 
     def test_renamed_composite_relationship_must_exist_in_sqlite(self):
         proposal = {"relationships": [{

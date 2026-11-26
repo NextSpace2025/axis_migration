@@ -11,6 +11,9 @@ const dryRun = args[0] === '--dry-run';
 if (dryRun) args.shift();
 const folderRun = args[0] === '--run';
 if (folderRun) args.shift();
+// --update replaces an earlier upload of the same run (a grown ledger) and keeps its lookup code.
+const update = folderRun && args[0] === '--update';
+if (update) args.shift();
 const [viewer, ...datasets] = args;
 const databaseUrl = process.env.AXIS_IMPORT_DATABASE_URL || (folderRun && process.env.DATABASE_URL);
 if (!viewer || (folderRun ? datasets.length : !datasets.length) || (!dryRun && !databaseUrl)) {
@@ -27,6 +30,7 @@ let child;
 let finished = false;
 let folder;
 let existingCode;
+let unchanged = false;
 let primaryCount;
 let committed = false;
 let disconnected = false;
@@ -131,10 +135,19 @@ try {
         const {rows:[existing]} = await client.query(
           'select access_code,snapshot_sha256 from axis_viewer.datasets where id=$1',[data.id]);
         if (existing) {
-          if (!isResultCode(existing.access_code) || existing.snapshot_sha256 !== data.snapshot_sha256) {
+          if (!isResultCode(existing.access_code) ||
+              (existing.snapshot_sha256 !== data.snapshot_sha256 && !update)) {
             throw new Error('Existing result does not match this verified run');
           }
           existingCode = existing.access_code;
+          unchanged = existing.snapshot_sha256 === data.snapshot_sha256;
+          if (!unchanged) {
+            await client.query('delete from axis_viewer.rows where dataset=$1',[data.id]);
+            await client.query('delete from axis_viewer.tables where dataset=$1',[data.id]);
+            await client.query(`update axis_viewer.datasets set label=$2,description=$3,default_table=$4,
+              catalog=$5,graph=$6,snapshot_sha256=$7 where id=$1`,
+            [data.id,data.label,data.description,data.default_table,data.catalog,data.graph,data.snapshot_sha256]);
+          }
         } else {
           await client.query(`insert into axis_viewer.datasets
             (id,label,description,default_table,catalog,graph,snapshot_sha256) values ($1,$2,$3,$4,$5,$6,$7)`,
@@ -148,11 +161,11 @@ try {
       }
     } else if (kind === 'table') {
       if (folderRun && data.name === folder.default_table) primaryCount = data.metadata.count;
-      if (client && !existingCode) await client.query('insert into axis_viewer.tables values ($1,$2,$3)',
+      if (client && !unchanged) await client.query('insert into axis_viewer.tables values ($1,$2,$3)',
         [data.dataset,data.name,data.metadata]);
     } else if (kind === 'row') {
       counts.set(data.dataset,counts.get(data.dataset)+1);
-      if (client && !existingCode) batch.push(line);
+      if (client && !unchanged) batch.push(line);
       if (batch.length >= 200) await flush();
     } else if (kind === 'complete') {
       finished = true;
