@@ -11,13 +11,27 @@ from threading import Lock
 from typing import Any, Literal
 from urllib.parse import urlencode, urlsplit
 
-from run_folder import (HOSTED_RESULT, RESULT_STAGE, REVIEW_STAGE, new_run, read_object, read_status,
-                        resume_context, save_object)
+from run_folder import (ACTIVE_VIEW, CLOSE_VIEW, HOSTED_RESULT, RESULT_STAGE, REVIEW_STAGE, new_run,
+                        read_object, read_status, resume_context, save_object, worker_running)
 
 
 RUNNER = Path(__file__).with_name("run_folder.py")
+# Runners outlive this server, so the run folder's lock is the source of truth for
+# whether one is active. These handles only add exit codes for runners started here
+# and cover the moment before a new runner takes its lock.
 jobs = {}
 job_lock = Lock()
+
+
+def worker_state(run):
+    """Return (active, exit code of a runner this server started, if it has exited)."""
+    job = jobs.get(run)
+    exit_code = job.poll() if job else None
+    active = worker_running(run)
+    if job and exit_code is None and not active:
+        # Started here but not locked yet: active until it locks or exits.
+        active = True
+    return active, exit_code
 
 
 def absolute_path(value):
@@ -38,8 +52,10 @@ def launch(run, company=None, answer=None, local=None):
             command.append(f"{option}={value}")
     log = run / "runner.log"
     with job_lock:
-        if run in jobs and jobs[run].poll() is None:
+        if worker_state(run)[0]:
             raise ValueError("이 작업이 이미 열려 있습니다. 작업 상태에서 주소를 확인하세요.")
+        for name in (ACTIVE_VIEW, CLOSE_VIEW):  # left by a runner that died
+            (run / name).unlink(missing_ok=True)
         if log.resolve() != log or log.is_symlink():
             raise ValueError("실행 로그의 저장 위치를 확인하세요.")
         options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {
@@ -69,22 +85,14 @@ def folder_status(run_dir: str) -> dict[str, Any]:
     """Read a local run's persisted status and return its active review or results URL."""
     run = run_path(run_dir)
     with job_lock:
-        job = jobs.get(run)
-        exit_code = job.poll() if job else None
-    data = {"run_dir": str(run), "worker_active": bool(job and exit_code is None),
+        active, exit_code = worker_state(run)
+    data = {"run_dir": str(run), "worker_active": active,
             "exit_code": exit_code, "status": None, "viewer_url": None}
     if (run / "status.json").exists():
         data["status"] = read_status(run)
-    link = run / "active-view.json"
-    if data["worker_active"] and link.is_file():
-        try:
-            view = read_object(link)
-        except (FileNotFoundError, ValueError):
-            if not link.exists():
-                return data
-            raise
-        if view["pid"] == job.pid:
-            data["viewer_url"] = view["url"]
+    view = active_view(run) if active else None
+    if view:
+        data["viewer_url"] = view["url"]
     if data["status"] and data["status"]["state"] == "completed" and (run / HOSTED_RESULT).is_file():
         published = read_object(run / HOSTED_RESULT)
         data["local_viewer_url"] = data["viewer_url"]
@@ -93,17 +101,30 @@ def folder_status(run_dir: str) -> dict[str, Any]:
     return data
 
 
+def active_view(run):
+    """The open view of the runner holding this run's lock; the runner clears stale markers on start."""
+    try:
+        view = read_object(run / ACTIVE_VIEW)
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        if not (run / ACTIVE_VIEW).exists():
+            return None
+        raise
+    return view
+
+
 def close_folder(run_dir: str) -> dict[str, Any]:
-    """Close this MCP session's open browser review or result. Keep the saved run for resuming."""
+    """Close the open browser review or result for this run. Keep the saved run for resuming."""
     run = run_path(run_dir)
     with job_lock:
-        job = jobs.get(run)
-        if not job or job.poll() is not None or not (run / "active-view.json").exists():
-            raise ValueError("이 MCP 연결에서 열어 둔 검토 또는 결과 화면이 없습니다.")
+        view = active_view(run) if worker_state(run)[0] else None
+        if not view:
+            raise ValueError("이 작업에서 열려 있는 검토 또는 결과 화면이 없습니다.")
         status = read_status(run)
         if status["stage"] not in (REVIEW_STAGE, RESULT_STAGE) or status["state"] == "running":
             raise ValueError("검토 대기나 결과 표시 중에 화면을 닫을 수 있습니다.")
-        save_object(run / "close-view.json", {"pid": job.pid})
+        save_object(run / CLOSE_VIEW, {"pid": view["pid"]})
     return {"requested": True, "run_dir": str(run)}
 
 

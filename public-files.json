@@ -46,6 +46,7 @@
     "scripts/run_status.py",
     "scripts/update.py",
     "scripts/view_db.py",
+    "tests/test_axis_mcp.py",
     "tests/test_axis_tools.py",
     "tests/test_public_release.py",
     "tests/test_reconcile.py",

@@ -37,6 +37,9 @@ HOSTED_RESULT = "hosted-result.json"
 APPEND_STAGE = "새 서류 추가"
 LEDGER = "ledger.json"
 APPEND_SCOPE = "append-scope.json"
+LOCK = "workflow-lock.sqlite"
+ACTIVE_VIEW = "active-view.json"
+CLOSE_VIEW = "close-view.json"
 DOCUMENT_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".csv", ".tsv", ".txt"}
 
 DESIGN = f"""Read and apply '{(PACKAGE / 'construction-schema-design/SKILL.md').as_posix()}'.
@@ -299,6 +302,25 @@ def new_run(source, *, publish=False):
     return run
 
 
+def worker_running(run):
+    """True while a runner holds this run's lock; the OS releases it if the runner dies."""
+    lock_path = run / LOCK
+    if lock_path.is_symlink():
+        raise ValueError("잠금 파일 위치를 확인하세요.")
+    if not lock_path.is_file():
+        return False
+    with closing(sqlite3.connect(f"{lock_path.as_uri()}?mode=rw", uri=True, timeout=0,
+                                 isolation_level=None)) as lock:
+        try:
+            lock.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            if "locked" in str(error):
+                return True
+            raise
+        lock.execute("ROLLBACK")
+    return False
+
+
 def resume_context(path):
     run = path.resolve(strict=True)
     source = Path(read_object(run / "workflow.json")["source"]).resolve(strict=True)
@@ -334,14 +356,18 @@ def main(argv=None):
         record.write_text(prior + "\n", encoding="utf-8")
     record_entry(record, f"## {datetime.now(timezone.utc).isoformat()} — folder workflow\n"
                          f"- Input directory: {source}\n- Status: {run / 'status.json'}")
-    lock_path = run / "workflow-lock.sqlite"
+    lock_path = run / LOCK
     if lock_path.is_symlink():
         parser.error("잠금 파일 위치를 확인하세요.")
-    with closing(sqlite3.connect(lock_path, timeout=0)) as lock:
+    # A short wait lets a concurrent worker_running() probe release the lock.
+    with closing(sqlite3.connect(lock_path, timeout=2)) as lock:
         try:
             lock.execute("BEGIN IMMEDIATE")
         except sqlite3.OperationalError as error:
             parser.error(f"결과 폴더를 이미 열었거나 잠금 파일에 접근할 수 없습니다. {error}")
+        # Holding the lock, any open-view marker left here belongs to a runner that died.
+        for name in (ACTIVE_VIEW, CLOSE_VIEW):
+            (run / name).unlink(missing_ok=True)
         metadata = read_object(run / "workflow.json")
         if Path(metadata["source"]) != source:
             parser.error("기록된 원본 폴더가 바뀌었습니다.")
@@ -390,7 +416,7 @@ Run context: {json.dumps(dict(source=str(source), reference_company=metadata['co
 
 
 def mark_view(run, url):
-    save_object(run / "active-view.json", {"url": url, "pid": os.getpid()})
+    save_object(run / ACTIVE_VIEW, {"url": url, "pid": os.getpid()})
 
 
 def open_link(run, url, no_browser):
@@ -401,7 +427,7 @@ def open_link(run, url, no_browser):
 
 
 def close_requested(run):
-    path = run / "close-view.json"
+    path = run / CLOSE_VIEW
     if not path.is_file():
         return False
     close = read_object(path)["pid"] == os.getpid()
@@ -777,7 +803,7 @@ def process(args, source, run, record, prior, metadata):
         return 1
     finally:
         stack.close()
-        (run / "active-view.json").unlink(missing_ok=True)
+        (run / ACTIVE_VIEW).unlink(missing_ok=True)
     return 0
 
 
